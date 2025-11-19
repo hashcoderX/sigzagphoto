@@ -1,0 +1,11 @@
+{
+  "name": "sigzagphoto",
+  "short_name": "sigzagphoto",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#6C63FF",
+  "icons": [
+    { "src": "/favicon.ico", "sizes": "48x48", "type": "image/x-icon" }
+  ]
+}

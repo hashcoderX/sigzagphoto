@@ -2,25 +2,120 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #1f2937;
+  --primary: #6C63FF;
+  --secondary: #FF6B6B;
+  --accent: #FFD93D;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* Removed unsupported @theme block; use CSS variables directly from :root. */
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Rich admin data table styling */
+.adminTable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 10px; /* row gaps for card feel */
+  font-size: 0.75rem; /* compact base */
+}
+.adminTable thead th {
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-weight: 600;
+  font-size: .65rem;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(90deg,#1e293b,#334155);
+  color: #f1f5f9;
+  position: relative;
+  white-space: nowrap;
+}
+.adminTable thead th:first-child { border-top-left-radius: 0.85rem; border-bottom-left-radius: 0.85rem; }
+.adminTable thead th:last-child { border-top-right-radius: 0.85rem; border-bottom-right-radius: 0.85rem; }
+.adminTable tbody tr {
+  background: linear-gradient(135deg,rgba(255,255,255,0.85) 0%,rgba(255,255,255,0.65) 100%);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 3px 8px -2px rgba(16,24,40,0.12),0 1px 3px rgba(16,24,40,0.08);
+  transition: box-shadow .25s, transform .25s, background .35s;
+}
+.adminTable tbody tr:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 24px -6px rgba(51,65,85,0.35),0 4px 10px -2px rgba(51,65,85,0.25);
+  background: linear-gradient(135deg,#111827 0%, #1f2937 100%);
+}
+.adminTable tbody tr:hover td {
+  color: #ffffff;
+}
+.adminTable tbody td {
+  padding: 0.85rem 1rem;
+  vertical-align: middle;
+  font-size: 0.75rem;
+  color: #1f2937;
+  border-top: 1px solid rgba(226,232,240,0.6);
+  border-bottom: 1px solid rgba(226,232,240,0.6);
+}
+.adminTable tbody tr td:first-child { border-left: 1px solid rgba(226,232,240,0.8); border-top-left-radius: 0.85rem; border-bottom-left-radius: 0.85rem; }
+.adminTable tbody tr td:last-child { border-right: 1px solid rgba(226,232,240,0.8); border-top-right-radius: 0.85rem; border-bottom-right-radius: 0.85rem; }
+.adminTable tbody tr:focus-within { outline: 2px solid #6366f1; outline-offset: 2px; }
+.adminTable caption {
+  caption-side: top;
+  text-align: left;
+  font-weight: 600;
+  padding: .5rem .25rem;
+  font-size: .7rem;
+  letter-spacing: .06em;
+  color: #475569;
+}
+@media (min-width: 768px) {
+  .adminTable { font-size: 0.8rem; }
+  .adminTable thead th { font-size: .7rem; }
+  .adminTable tbody td { font-size: .75rem; }
+}
+
+/* Utility badges for statuses */
+.badge { display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius: 999px; font-size: .6rem; font-weight:600; letter-spacing:.05em; text-transform:uppercase; }
+.badge-open { background:#eef2ff; color:#1e3a8a; }
+.badge-in_progress { background:#f0fdf4; color:#047857; }
+.badge-done { background:#f1f5f9; color:#0f172a; }
+.badge-pending { background:#fef9c3; color:#92400e; }
+.badge-paid { background:#ecfdf5; color:#065f46; }
+.badge-failed { background:#fee2e2; color:#991b1b; }
+.badge-overdue { background:#ffe4e6; color:#be123c; }
+.badge-sent { background:#f0f9ff; color:#0369a1; }
+.badge-draft { background:#f8fafc; color:#334155; }
+
+/* Ensure dark mode readiness (future) */
+@media (prefers-color-scheme: dark) {
+  .adminTable thead th { background: linear-gradient(90deg,#0f172a,#1e293b); color:#e2e8f0; }
+  .adminTable tbody tr { background: linear-gradient(135deg,rgba(30,41,59,0.85),rgba(30,41,59,0.65)); }
+  .adminTable tbody td { color:#f1f5f9; border-color: rgba(51,65,85,0.6); }
+  .adminTable tbody tr td:first-child, .adminTable tbody tr td:last-child { border-color: rgba(51,65,85,0.8); }
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom animations */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(108, 99, 255, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(108, 99, 255, 0.6);
+  }
 }
