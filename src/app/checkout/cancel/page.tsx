@@ -4,8 +4,9 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { Suspense } from "react";
 
-export default function CheckoutCancelPage() {
+function CheckoutCancelContent() {
   const params = useSearchParams();
   const router = useRouter();
   const photoId = params.get("photo");
@@ -28,5 +29,13 @@ export default function CheckoutCancelPage() {
       </section>
       <Footer />
     </main>
+  );
+}
+
+export default function CheckoutCancelPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <CheckoutCancelContent />
+    </Suspense>
   );
 }
