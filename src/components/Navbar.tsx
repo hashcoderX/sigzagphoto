@@ -149,12 +149,19 @@ export default function Navbar() {
           </div>
 
           {/* Mobile Menu Button */}
-          <button
+          <motion.button
             onClick={() => setIsOpen(!isOpen)}
-            className="md:hidden text-gray-700 hover:text-[#6C63FF] transition-colors"
+            className="md:hidden p-3 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-200 text-gray-700 hover:text-[#6C63FF] transition-all duration-300 shadow-sm hover:shadow-md border border-gray-200 hover:border-[#6C63FF]/30 focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/50"
+            whileTap={{ scale: 0.95 }}
+            whileHover={{ scale: 1.05 }}
           >
-            {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
+            <motion.div
+              animate={{ rotate: isOpen ? 180 : 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </motion.div>
+          </motion.button>
         </div>
       </div>
 
