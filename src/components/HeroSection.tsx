@@ -11,7 +11,7 @@ const slides = [
     title: 'Capture, Create, Sell',
     subtitle: 'on sigzagphoto',
     description: 'Connect with millions of photographers, showcase your portfolio, and sell your photos to buyers worldwide',
-    backgroundImage: 'https://images.unsplash.com/photo-1452587925148-ce544e77e70d?w=1920&h=1080&fit=crop',
+    backgroundImage: 'https://images.unsplash.com/photo-1452587925148-ce544e77e70d?w=1200&h=800&fit=crop&q=80',
     stats: [
       { value: '10M+', label: 'Photos Uploaded' },
       { value: '500K+', label: 'Photographers' },
@@ -23,7 +23,7 @@ const slides = [
     title: 'Studio Management',
     subtitle: 'Professional Tools for Photographers',
     description: 'Manage your photography business with advanced tools for client management, project tracking, and workflow automation',
-    backgroundImage: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1920&h=1080&fit=crop',
+    backgroundImage: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1200&h=800&fit=crop&q=80',
     stats: [
       { value: 'Smart', label: 'Client Management' },
       { value: 'Automated', label: 'Workflow' },
@@ -35,7 +35,7 @@ const slides = [
     title: 'Photographer Suite',
     subtitle: 'AI-Powered Enhancement',
     description: 'Enhance your photos with cutting-edge AI tools, create stunning portfolios, and grow your photography career',
-    backgroundImage: 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=1920&h=1080&fit=crop',
+    backgroundImage: 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=1200&h=800&fit=crop&q=80',
     stats: [
       { value: 'AI', label: 'Enhancement' },
       { value: 'Pro', label: 'Portfolios' },
@@ -47,7 +47,7 @@ const slides = [
     title: 'Marketplace Success',
     subtitle: 'Sell Worldwide',
     description: 'Turn your passion into profit with our global marketplace. Reach buyers in every corner of the world',
-    backgroundImage: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1920&h=1080&fit=crop',
+    backgroundImage: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1200&h=800&fit=crop&q=80',
     stats: [
       { value: 'Global', label: 'Marketplace' },
       { value: 'Instant', label: 'Sales' },
@@ -93,7 +93,7 @@ export default function HeroSection() {
           animate={{ opacity: 0.3, scale: 1 }}
           exit={{ opacity: 0, scale: 0.9 }}
           transition={{ duration: 0.7 }}
-          className="absolute inset-0 bg-cover bg-center mix-blend-overlay"
+          className="absolute inset-0 bg-cover bg-center opacity-30 md:opacity-100 md:mix-blend-overlay"
           style={{
             backgroundImage: `url(${slide.backgroundImage})`,
           }}
