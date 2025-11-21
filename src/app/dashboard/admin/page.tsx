@@ -10,7 +10,7 @@ import Link from "next/link";
 import AdminSectionHeader from "@/components/AdminSectionHeader";
 import { hasBusinessAccess, isFreeExpired } from "@/lib/access";
 
-type ApiUser = { id: number; name: string; email: string; role: string };
+type ApiUser = { id: number; name: string; email: string; role: string; logo_url?: string | null };
 type TrialStatus = { is_trial_active: boolean; trial_days_remaining: number; subscription_plan?: string | null; show_warning?: boolean };
 
 export default function AdminDashboardPage() {
@@ -75,7 +75,17 @@ export default function AdminDashboardPage() {
                             {error && <div className="mb-4 bg-red-50 border-2 border-red-200 text-red-700 px-5 py-3 rounded-xl">{error}</div>}
                             {!loading && user && (
                                 <div className="mb-8 space-y-4">
-                                    <p className="text-gray-700">Hello, <span className="font-semibold">{user.name}</span> — role: <span className={`roleBadge role-${(user.role || '').toLowerCase()} capitalize`}>{user.role}</span></p>
+                                    <div className="flex items-center space-x-4">
+                                        {user.logo_url && (
+                                            <div className="w-16 h-16 rounded-2xl overflow-hidden flex-shrink-0">
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img src={user.logo_url} alt="Logo" className="w-full h-full object-cover" />
+                                            </div>
+                                        )}
+                                        <div>
+                                            <p className="text-gray-700">Hello, <span className="font-semibold">{user.name}</span> — role: <span className={`roleBadge role-${(user.role || '').toLowerCase()} capitalize`}>{user.role}</span></p>
+                                        </div>
+                                    </div>
                                     {trial && (
                                         trial.is_trial_active ? (
                                             <div className={`px-5 py-3 rounded-xl text-sm font-medium ${trial.show_warning ? 'bg-amber-50 border-2 border-amber-200 text-amber-800' : 'bg-indigo-50 border-2 border-indigo-200 text-indigo-700'}`}>

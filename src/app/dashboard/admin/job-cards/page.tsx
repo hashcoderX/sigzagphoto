@@ -5,15 +5,109 @@ import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { motion } from "framer-motion";
-import { Plus, Trash2, Save, X } from "lucide-react";
+import { Plus, Trash2, Save, X, Receipt, Edit, CheckSquare, FileText, Eye, DollarSign } from "lucide-react";
 import AdminSectionHeader from "@/components/AdminSectionHeader";
 import { hasBusinessAccess, isBusinessOrPhotographer, isFreeExpired } from "@/lib/access";
 
 interface Booking { id: number; customer_id: number; location?: string | null; event_date?: string; customer?: { id: number; name: string }; }
 interface JobCardItem { id?: number; service: string; qty: number; amount: number; sub_amount?: number; subamount?: number }
-interface JobCard { id: number; booking_id: number; title: string; description?: string; status: string; assigned_to?: string; due_date?: string | null; confirmed_amount?: number | string | null; advance_payment?: number | string | null; discount?: number | string | null; booking?: Booking; items?: JobCardItem[] }
+interface Task { id?: number; title: string; description?: string; completed: boolean; completed_at?: string; created_at?: string }
+interface JobCard { id: number; booking_id: number; title: string; description?: string; status: string; assigned_to?: string; due_date?: string | null; confirmed_amount?: number | string | null; advance_payment?: number | string | null; discount?: number | string | null; booking?: Booking; items?: JobCardItem[]; tasks?: Task[] }
+interface JobCardExpense { id: number; event_type: string; job_card_id: number; amount: number; description: string; vendor?: string; expense_date: string; receipt_path?: string; job_card?: { id: number; title: string } }
 type LineItem = { service: string; qty: number; amount: number; subamount: number };
 interface Page<T> { data: T[]; current_page: number; last_page: number; }
+
+const DonutChart = ({ income, expense, colors = { income: '#059669', expense: '#e11d48' }, size = 220, thickness = 22, centerTop, centerBottom, svgRef }:
+  { income: number; expense: number; colors?: { income: string; expense: string }; size?: number; thickness?: number; centerTop?: string; centerBottom?: string; svgRef?: React.RefObject<SVGSVGElement> }) => {
+  const total = Math.max(0, Number(income)) + Math.max(0, Number(expense));
+  const radius = (size / 2) - thickness / 2;
+  const cx = size / 2; const cy = size / 2;
+  const C = 2 * Math.PI * radius;
+  const incFrac = total > 0 ? Math.max(0, Number(income)) / total : 0;
+  const expFrac = total > 0 ? Math.max(0, Number(expense)) / total : 0;
+  const [animated, setAnimated] = useState(false);
+
+  useEffect(() => {
+    const id = setTimeout(() => setAnimated(true), 20);
+    return () => clearTimeout(id);
+  }, [income, expense]);
+
+  const labelPos = (startFrac: number, frac: number, offset = 14) => {
+    const midDeg = (startFrac + frac / 2) * 360; // from 0 at top
+    const rad = (midDeg - 90) * Math.PI / 180;
+    const rr = radius + thickness / 2 + offset;
+    return { x: cx + rr * Math.cos(rad), y: cy + rr * Math.sin(rad) };
+  };
+
+  return (
+    <svg ref={svgRef} viewBox={`0 0 ${size} ${size}`} className="w-full max-w-[320px]">
+      <defs>
+        <filter id="softShadow" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.1" />
+        </filter>
+      </defs>
+      <g filter="url(#softShadow)">
+        <circle cx={cx} cy={cy} r={radius} fill="none" stroke="#e5e7eb" strokeWidth={thickness} />
+        {incFrac > 0 && (
+          <circle
+            cx={cx}
+            cy={cy}
+            r={radius}
+            fill="none"
+            stroke={colors.income}
+            strokeWidth={thickness}
+            strokeDasharray={`${incFrac * C} ${C}`}
+            strokeDashoffset={0}
+            style={{ transition: 'stroke-dasharray 0.5s ease-in-out' }}
+            transform={`rotate(-90 ${cx} ${cy})`}
+          />
+        )}
+        {expFrac > 0 && (
+          <circle
+            cx={cx}
+            cy={cy}
+            r={radius}
+            fill="none"
+            stroke={colors.expense}
+            strokeWidth={thickness}
+            strokeDasharray={`${expFrac * C} ${C}`}
+            strokeDashoffset={-incFrac * C}
+            style={{ transition: 'stroke-dasharray 0.5s ease-in-out' }}
+            transform={`rotate(-90 ${cx} ${cy})`}
+          />
+        )}
+        {/* Center label */}
+        <g>
+          <text x={cx} y={cy - 6} textAnchor="middle" fontSize="12" fill="#6b7280">{centerTop}</text>
+          <text x={cx} y={cy + 16} textAnchor="middle" fontSize="16" fontWeight={700} fill="#111827">{centerBottom}</text>
+        </g>
+      </g>
+      {/* Labels on arcs */}
+      {incFrac > 0 && (() => {
+        const p = labelPos(0, incFrac);
+        const pct = Math.round(incFrac * 100);
+        return (
+          <g key="inc-label" transform={`translate(${p.x},${p.y})`}>
+            <rect x={-36} y={-18} rx={10} ry={10} width={72} height={36} fill="#ecfdf5" stroke="#a7f3d0" />
+            <text x={0} y={-2} textAnchor="middle" fontSize="10" fill="#065f46">Income</text>
+            <text x={0} y={10} textAnchor="middle" fontSize="12" fontWeight={700} fill="#065f46">{pct}%</text>
+          </g>
+        );
+      })()}
+      {expFrac > 0 && (() => {
+        const p = labelPos(incFrac, expFrac);
+        const pct = Math.round(expFrac * 100);
+        return (
+          <g key="exp-label" transform={`translate(${p.x},${p.y})`}>
+            <rect x={-36} y={-18} rx={10} ry={10} width={72} height={36} fill="#fef2f2" stroke="#fecaca" />
+            <text x={0} y={-2} textAnchor="middle" fontSize="10" fill="#991b1b">Expense</text>
+            <text x={0} y={10} textAnchor="middle" fontSize="12" fontWeight={700} fill="#991b1b">{pct}%</text>
+          </g>
+        );
+      })()}
+    </svg>
+  );
+};
 
 export default function JobCardsPage() {
   const router = useRouter();
@@ -58,6 +152,26 @@ export default function JobCardsPage() {
   const [invoiceReference, setInvoiceReference] = useState<string>('');
   const [invoiceError, setInvoiceError] = useState<string | null>(null);
   const [tempDue, setTempDue] = useState<Record<number, number>>({});
+  const [editingStatusId, setEditingStatusId] = useState<number | null>(null);
+  // Task tracking state
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskDescription, setNewTaskDescription] = useState('');
+  const [editTasks, setEditTasks] = useState<Task[]>([]);
+  const [editNewTaskTitle, setEditNewTaskTitle] = useState('');
+  const [editNewTaskDescription, setEditNewTaskDescription] = useState('');
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [taskModalTarget, setTaskModalTarget] = useState<JobCard | null>(null);
+  const [updatingTaskId, setUpdatingTaskId] = useState<number | null>(null);
+  // Payment history modal state
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentModalTarget, setPaymentModalTarget] = useState<JobCard | null>(null);
+  const [payments, setPayments] = useState<any[]>([]);
+  // Expenses modal state
+  const [showExpensesModal, setShowExpensesModal] = useState(false);
+  const [expensesModalTarget, setExpensesModalTarget] = useState<JobCard | null>(null);
+  const [expenses, setExpenses] = useState<JobCardExpense[]>([]);
+  const [totalIncome, setTotalIncome] = useState<number>(0);
 
   useEffect(() => {
     const t = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
@@ -68,11 +182,11 @@ export default function JobCardsPage() {
     fetchList(t, 1);
     fetchBookings(t);
     fetchProfile(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchBookings = async (t: string) => {
-    try { const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/bookings?per_page=100`, { headers: { Accept: 'application/json', Authorization: `Bearer ${t}` } }); if (!res.ok) return; const data = await res.json(); setBookings(data.data || []); } catch {}
+    try { const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/bookings?per_page=100`, { headers: { Accept: 'application/json', Authorization: `Bearer ${t}` } }); if (!res.ok) return; const data = await res.json(); setBookings(data.data || []); } catch { }
   };
   const fetchList = async (t: string, p: number) => {
     setLoading(true); setError(null);
@@ -80,7 +194,7 @@ export default function JobCardsPage() {
     catch (e: any) { setError(e?.message || 'Failed to load job cards'); } finally { setLoading(false); }
   };
   const fetchProfile = async (t: string) => {
-    try { const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/me`, { headers: { Accept: 'application/json', Authorization: `Bearer ${t}` } }); if (!res.ok) return; const data = await res.json(); if (data?.currency) setUserCurrency(data.currency); } catch {}
+    try { const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/me`, { headers: { Accept: 'application/json', Authorization: `Bearer ${t}` } }); if (!res.ok) return; const data = await res.json(); if (data?.currency) setUserCurrency(data.currency); } catch { }
   };
 
   const formatCurrency = (value: number): string => {
@@ -117,6 +231,12 @@ export default function JobCardsPage() {
         ...form,
         discount: (discount && Number(discount) >= 0) ? Number(discount) : undefined,
         items: items.map(it => ({ service: it.service, qty: it.qty, amount: it.amount, subamount: it.subamount })),
+        tasks: tasks.map(task => ({
+          title: task.title,
+          description: task.description,
+          completed: task.completed,
+          completed_at: task.completed_at
+        }))
       };
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
       const data = await res.json();
@@ -124,6 +244,7 @@ export default function JobCardsPage() {
       setCreating(false);
       setForm({ status: 'open' });
       setItems([]); setLineService(''); setLineQty(''); setLineAmount(''); setDiscount('');
+      setTasks([]); setNewTaskTitle(''); setNewTaskDescription('');
       fetchList(token, 1);
       setSuccessMessage('Job card created successfully.');
       // Auto-download Job Card PDF after create
@@ -139,7 +260,7 @@ export default function JobCardsPage() {
             URL.revokeObjectURL(url);
           }
         }
-      } catch {}
+      } catch { }
     }
     catch (e: any) { setError(e?.message || 'Create failed'); }
   };
@@ -158,8 +279,10 @@ export default function JobCardsPage() {
     }));
     setEditItems(mapped);
     setEditDiscount(it.discount ? String(it.discount) : '');
+    // Initialize editable tasks list
+    setEditTasks(it.tasks || []);
   };
-  const cancelEdit = () => { setEditId(null); setEditForm({}); };
+  const cancelEdit = () => { setEditId(null); setEditForm({}); setEditItems([]); setEditDiscount(''); setEditTasks([]); setEditNewTaskTitle(''); setEditNewTaskDescription(''); };
   const saveEdit = async (id: number) => {
     if (!token) return;
     setError(null); setSuccessMessage(null);
@@ -174,6 +297,13 @@ export default function JobCardsPage() {
       const payload: any = { ...editForm };
       payload.items = preparedItems;
       payload.discount = editDiscount !== '' ? Number(editDiscount) : undefined;
+      payload.tasks = editTasks.map(task => ({
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        completed: task.completed,
+        completed_at: task.completed_at
+      }));
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || 'Update failed');
@@ -182,29 +312,157 @@ export default function JobCardsPage() {
       setSuccessMessage('Job card updated successfully.');
     } catch (e: any) { setError(e?.message || 'Update failed'); }
   };
-    const addEditLineItem = () => {
-      setEditLineError(null);
-      const svc = editLineService.trim();
-      const qty = Number(editLineQty);
-      const amt = Number(editLineAmount);
-      if (!svc) { setEditLineError('Item is required'); return; }
-      if (!Number.isFinite(qty) || qty <= 0) { setEditLineError('Qty must be positive'); return; }
-      if (!Number.isFinite(amt) || amt < 0) { setEditLineError('Amount must be >= 0'); return; }
-      const sub = +(amt * qty).toFixed(2);
-      setEditItems(prev => [...prev, { service: svc, qty, amount: +amt.toFixed(2), sub_amount: sub, subamount: sub }]);
-      setEditLineService(''); setEditLineQty(''); setEditLineAmount('');
-    };
+  const addEditLineItem = () => {
+    setEditLineError(null);
+    const svc = editLineService.trim();
+    const qty = Number(editLineQty);
+    const amt = Number(editLineAmount);
+    if (!svc) { setEditLineError('Item is required'); return; }
+    if (!Number.isFinite(qty) || qty <= 0) { setEditLineError('Qty must be positive'); return; }
+    if (!Number.isFinite(amt) || amt < 0) { setEditLineError('Amount must be >= 0'); return; }
+    const sub = +(amt * qty).toFixed(2);
+    setEditItems(prev => [...prev, { service: svc, qty, amount: +amt.toFixed(2), sub_amount: sub, subamount: sub }]);
+    setEditLineService(''); setEditLineQty(''); setEditLineAmount('');
+  };
 
-    const removeEditItem = (idx: number) => {
-      setEditItems(prev => prev.filter((_, i) => i !== idx));
-    };
+  const removeEditItem = (idx: number) => {
+    setEditItems(prev => prev.filter((_, i) => i !== idx));
+  };
 
-    const editItemsSubtotal = editItems.reduce((s, it) => s + Number(it.sub_amount ?? it.subamount ?? (it.amount * it.qty)), 0);
-    const editDiscountNum = (() => { const n = Number(editDiscount); return Number.isFinite(n) && n > 0 ? +n.toFixed(2) : 0; })();
-    const editFinalAmount = Math.max(0, +(editItemsSubtotal - editDiscountNum).toFixed(2));
-    const editAdvance = Number(editForm.advance_payment ?? 0);
-    const editDueAmount = Math.max(0, editFinalAmount - editAdvance);
+  const editItemsSubtotal = editItems.reduce((s, it) => s + Number(it.sub_amount ?? it.subamount ?? (it.amount * it.qty)), 0);
+  const editDiscountNum = (() => { const n = Number(editDiscount); return Number.isFinite(n) && n > 0 ? +n.toFixed(2) : 0; })();
+  const editFinalAmount = Math.max(0, +(editItemsSubtotal - editDiscountNum).toFixed(2));
+  const editAdvance = Number(editForm.advance_payment ?? 0);
+  const editDueAmount = Math.max(0, editFinalAmount - editAdvance);
   const remove = async (id: number) => { if (!token) return; if (!confirm('Delete this job card?')) return; try { const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${id}`, { method: 'DELETE', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } }); if (!res.ok) throw new Error('Delete failed'); fetchList(token, page?.current_page || 1); setSuccessMessage('Job card deleted.'); } catch (e: any) { setError(e?.message || 'Delete failed'); } };
+
+  const updateStatus = async (id: number, status: string) => {
+    if (!token) return;
+    setError(null); setSuccessMessage(null);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || 'Update failed');
+      setEditingStatusId(null);
+      fetchList(token, page?.current_page || 1);
+      setSuccessMessage('Status updated successfully.');
+    } catch (e: any) { setError(e?.message || 'Update failed'); }
+  };
+
+  // Task management functions
+  const addTask = () => {
+    if (!newTaskTitle.trim()) return;
+    const task: Task = {
+      title: newTaskTitle.trim(),
+      description: newTaskDescription.trim() || undefined,
+      completed: false,
+      created_at: new Date().toISOString()
+    };
+    setTasks(prev => [...prev, task]);
+    setNewTaskTitle('');
+    setNewTaskDescription('');
+  };
+
+  const toggleTaskCompletion = (taskIndex: number) => {
+    setTasks(prev => prev.map((task, idx) =>
+      idx === taskIndex
+        ? {
+          ...task,
+          completed: !task.completed,
+          completed_at: !task.completed ? new Date().toISOString() : undefined
+        }
+        : task
+    ));
+  };
+
+  const removeTask = (taskIndex: number) => {
+    setTasks(prev => prev.filter((_, idx) => idx !== taskIndex));
+  };
+
+  const addEditTask = () => {
+    if (!editNewTaskTitle.trim()) return;
+    const task: Task = {
+      title: editNewTaskTitle.trim(),
+      description: editNewTaskDescription.trim() || undefined,
+      completed: false,
+      created_at: new Date().toISOString()
+    };
+    setEditTasks(prev => [...prev, task]);
+    setEditNewTaskTitle('');
+    setEditNewTaskDescription('');
+  };
+
+  const toggleEditTaskCompletion = (taskIndex: number) => {
+    setEditTasks(prev => prev.map((task, idx) =>
+      idx === taskIndex
+        ? {
+          ...task,
+          completed: !task.completed,
+          completed_at: !task.completed ? new Date().toISOString() : undefined
+        }
+        : task
+    ));
+  };
+
+  const removeEditTask = (taskIndex: number) => {
+    setEditTasks(prev => prev.filter((_, idx) => idx !== taskIndex));
+  };
+
+  const openTaskModal = (jobCard: JobCard) => {
+    setTaskModalTarget(jobCard);
+    setShowTaskModal(true);
+  };
+
+  const openPaymentModal = async (jobCard: JobCard) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${jobCard.id}/payments`, {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPayments(data);
+        setPaymentModalTarget(jobCard);
+        setShowPaymentModal(true);
+      } else {
+        setError('Failed to load payment history');
+        setTimeout(() => setError(null), 3000);
+      }
+    } catch (e) {
+      setError('Failed to load payment history');
+      setTimeout(() => setError(null), 3000);
+    }
+  };
+
+  const openExpensesModal = async (jobCard: JobCard) => {
+    if (!token) return;
+    try {
+      // Fetch expenses
+      const expensesRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-card-expenses?job_card_id=${jobCard.id}`, {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }
+      });
+      const expensesData = expensesRes.ok ? await expensesRes.json() : { data: [] };
+      setExpenses(expensesData.data || []);
+
+      // Fetch payments (income)
+      const paymentsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${jobCard.id}/payments`, {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }
+      });
+      const paymentsData = paymentsRes.ok ? await paymentsRes.json() : [];
+      const income = paymentsData.reduce((sum: number, p: any) => sum + Number(p.amount), 0);
+      setTotalIncome(income);
+
+      setExpensesModalTarget(jobCard);
+      setShowExpensesModal(true);
+    } catch (e) {
+      setError('Failed to load expenses and income');
+      setTimeout(() => setError(null), 3000);
+    }
+  };
 
   const collectAdvance = async (it: JobCard) => {
     if (!token) return;
@@ -242,7 +500,7 @@ export default function JobCardsPage() {
           document.body.appendChild(a); a.click(); a.remove();
           URL.revokeObjectURL(url);
         }
-      } catch {}
+      } catch { }
     } catch (e: any) { setError(e?.message || 'Failed to record payment'); }
   };
 
@@ -318,7 +576,7 @@ export default function JobCardsPage() {
           document.body.appendChild(a); a.click(); a.remove();
           URL.revokeObjectURL(url);
         }
-      } catch {}
+      } catch { }
     } catch (e: any) {
       setAdvanceError(e?.message || 'Failed to record advance');
     }
@@ -337,7 +595,7 @@ export default function JobCardsPage() {
       return;
     }
     setInvoiceDue(due);
-    // Default collect to full remaining due, but user can lower it.
+    // Default collect to full remaining due, but user can set to 0 to collect later or any amount up to due.
     setInvoiceCollect(due.toFixed(2));
     setInvoiceRemaining(0);
     setInvoiceMethod('cash');
@@ -349,8 +607,8 @@ export default function JobCardsPage() {
   const submitInvoice = async () => {
     if (!token || !invoiceTarget) return;
     setInvoiceError(null);
-    const collect = Number(invoiceCollect);
-    if (!Number.isFinite(collect) || collect <= 0) { setInvoiceError('Collect amount must be greater than zero'); return; }
+    const collect = Number(invoiceCollect || 0);
+    if (!Number.isFinite(collect) || collect < 0) { setInvoiceError('Collect amount must be 0 or greater'); return; }
     if (collect > invoiceDue) { setInvoiceError('Collect amount cannot exceed current due'); return; }
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${invoiceTarget.id}/invoice`, {
@@ -383,7 +641,7 @@ export default function JobCardsPage() {
             URL.revokeObjectURL(url);
           }
         }
-      } catch {}
+      } catch { }
     } catch (e: any) {
       setInvoiceError(e?.message || 'Failed to create invoice');
     }
@@ -516,6 +774,67 @@ export default function JobCardsPage() {
                       setForm({ ...form, advance_payment: v === '' ? undefined : Number(v) });
                     }}
                   />
+                  {/* Tasks section */}
+                  <div className="md:col-span-2 mt-2 p-4 border-2 border-purple-100 rounded-xl bg-gradient-to-r from-purple-50 to-pink-50">
+                    <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                      <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
+                      Tasks & Milestones
+                    </h4>
+                    <div className="space-y-3 mb-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input
+                          className="input"
+                          placeholder="Task title *"
+                          value={newTaskTitle}
+                          onChange={(e) => setNewTaskTitle(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && addTask()}
+                        />
+                        <input
+                          className="input"
+                          placeholder="Description (optional)"
+                          value={newTaskDescription}
+                          onChange={(e) => setNewTaskDescription(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && addTask()}
+                        />
+                      </div>
+                      <button type="button" onClick={addTask} className="btn-secondary flex items-center gap-2">
+                        <Plus className="w-4 h-4" /> Add Task
+                      </button>
+                    </div>
+                    {tasks.length > 0 && (
+                      <div className="space-y-2">
+                        <h5 className="text-sm font-medium text-gray-700">Added Tasks:</h5>
+                        {tasks.map((task, idx) => (
+                          <div key={idx} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200">
+                            <input
+                              type="checkbox"
+                              checked={task.completed}
+                              onChange={() => toggleTaskCompletion(idx)}
+                              className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                            />
+                            <div className="flex-1">
+                              <div className={`font-medium ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
+                                {task.title}
+                              </div>
+                              {task.description && (
+                                <div className={`text-sm ${task.completed ? 'text-gray-400' : 'text-gray-600'}`}>
+                                  {task.description}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeTask(idx)}
+                              className="text-red-500 hover:text-red-700 p-1"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                 </div>
                 <div className="mt-4 flex gap-3">
                   <button onClick={createItem} className="btn-primary flex items-center gap-2"><Save className="w-4 h-4" /> Save</button>
@@ -553,17 +872,17 @@ export default function JobCardsPage() {
                         <tr key={idx}>
                           <td className="py-2 pr-4">
                             <input className="input" value={it.service} onChange={e => {
-                              const v = e.target.value; setEditItems(prev => prev.map((p,i) => i===idx?{...p,service:v}:p));
+                              const v = e.target.value; setEditItems(prev => prev.map((p, i) => i === idx ? { ...p, service: v } : p));
                             }} />
                           </td>
                           <td className="py-2 pr-4">
                             <input type="number" className="input" value={it.qty} onChange={e => {
-                              const v = Number(e.target.value); setEditItems(prev => prev.map((p,i) => i===idx?{...p,qty:v,sub_amount: +(p.amount * v).toFixed(2), subamount: +(p.amount * v).toFixed(2)}:p));
+                              const v = Number(e.target.value); setEditItems(prev => prev.map((p, i) => i === idx ? { ...p, qty: v, sub_amount: +(p.amount * v).toFixed(2), subamount: +(p.amount * v).toFixed(2) } : p));
                             }} />
                           </td>
                           <td className="py-2 pr-4">
                             <input type="number" step="0.01" className="input" value={it.amount} onChange={e => {
-                              const v = Number(e.target.value); setEditItems(prev => prev.map((p,i) => i===idx?{...p,amount:v,sub_amount: +(v * p.qty).toFixed(2), subamount: +(v * p.qty).toFixed(2)}:p));
+                              const v = Number(e.target.value); setEditItems(prev => prev.map((p, i) => i === idx ? { ...p, amount: v, sub_amount: +(v * p.qty).toFixed(2), subamount: +(v * p.qty).toFixed(2) } : p));
                             }} />
                           </td>
                           <td className="py-2 pr-4">{formatCurrency(Number(it.sub_amount ?? it.subamount ?? (it.amount * it.qty)))}</td>
@@ -589,6 +908,66 @@ export default function JobCardsPage() {
                   <div><span className="text-sm text-gray-600 mr-2">Final Amount:</span><span className="text-lg font-bold">{formatCurrency(editFinalAmount)}</span></div>
                   <div><span className="text-sm text-gray-600 mr-2">Advance:</span><span className="text-lg font-bold">{formatCurrency(editAdvance)}</span></div>
                   <div><span className="text-sm text-gray-600 mr-2">Due:</span><span className="text-lg font-bold">{formatCurrency(editDueAmount)}</span></div>
+                </div>
+                {/* Edit Tasks Section */}
+                <div className="mb-4 p-4 border-2 border-purple-100 rounded-xl bg-gradient-to-r from-purple-50 to-pink-50">
+                  <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
+                    Tasks & Milestones
+                  </h4>
+                  <div className="space-y-3 mb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <input
+                        className="input"
+                        placeholder="Task title *"
+                        value={editNewTaskTitle}
+                        onChange={(e) => setEditNewTaskTitle(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && addEditTask()}
+                      />
+                      <input
+                        className="input"
+                        placeholder="Description (optional)"
+                        value={editNewTaskDescription}
+                        onChange={(e) => setEditNewTaskDescription(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && addEditTask()}
+                      />
+                    </div>
+                    <button type="button" onClick={addEditTask} className="btn-secondary flex items-center gap-2">
+                      <Plus className="w-4 h-4" /> Add Task
+                    </button>
+                  </div>
+                  {editTasks.length > 0 && (
+                    <div className="space-y-2">
+                      <h5 className="text-sm font-medium text-gray-700">Tasks:</h5>
+                      {editTasks.map((task, idx) => (
+                        <div key={idx} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200">
+                          <input
+                            type="checkbox"
+                            checked={task.completed}
+                            onChange={() => toggleEditTaskCompletion(idx)}
+                            className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                          />
+                          <div className="flex-1">
+                            <div className={`font-medium ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
+                              {task.title}
+                            </div>
+                            {task.description && (
+                              <div className={`text-sm ${task.completed ? 'text-gray-400' : 'text-gray-600'}`}>
+                                {task.description}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeEditTask(idx)}
+                            className="text-red-500 hover:text-red-700 p-1"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-3">
                   <button onClick={() => editId && saveEdit(editId)} className="btn-primary flex items-center gap-2"><Save className="w-4 h-4" /> Save Items</button>
@@ -647,14 +1026,14 @@ export default function JobCardsPage() {
                             <th className="py-2 pr-4">Status</th>
                             <th className="py-2 pr-4">Final Amount</th>
                             <th className="py-2 pr-4">Advance</th>
-                          <th className="py-2 pr-4">Total Paid</th>
+                            <th className="py-2 pr-4">Total Paid</th>
                             <th className="py-2 pr-4">Due Amount</th>
                             <th className="py-2 pr-4">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
                           {rows.length === 0 ? (
-                            <tr><td className="py-4 pr-4 text-gray-500" colSpan={7}>No records.</td></tr>
+                            <tr><td className="py-4 pr-4 text-gray-500" colSpan={8}>No records.</td></tr>
                           ) : rows.map(it => (
                             <tr key={it.id}>
                               <td className="py-2 pr-4">{
@@ -710,12 +1089,24 @@ export default function JobCardsPage() {
                                   </div>
                                 ) : (
                                   <div className="flex gap-2">
-                                    <button onClick={() => startEdit(it)} className="btn-secondary">Edit</button>
+                                    <button onClick={() => startEdit(it)} className="btn-secondary" title="Edit">
+                                      <Edit className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={() => openTaskModal(it)} className="btn-secondary" title="Tasks">
+                                      <CheckSquare className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={() => openPaymentModal(it)} className="btn-secondary" title="View Payment History">
+                                      <Receipt className="w-4 h-4" />
+                                    </button>
                                     {Number((it as any).advance_payment ?? 0) <= 0 && (
                                       <button onClick={() => openAdvanceModal(it)} className="btn-secondary">Collect Advance</button>
                                     )}
-                                    <button onClick={() => viewJobCardPdf(it)} className="btn-primary">View Job Card</button>
-                                    <button onClick={() => remove(it.id)} className="btn-danger flex items-center gap-1"><Trash2 className="w-4 h-4" /> Delete</button>
+                                    <button onClick={() => viewJobCardPdf(it)} className="btn-primary" title="View Job Card">
+                                      <Eye className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={() => remove(it.id)} className="btn-danger" title="Delete">
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
                                   </div>
                                 )}
                               </td>
@@ -739,14 +1130,14 @@ export default function JobCardsPage() {
                               <th className="py-2 pr-4">Status</th>
                               <th className="py-2 pr-4">Final Amount</th>
                               <th className="py-2 pr-4">Advance</th>
-                            <th className="py-2 pr-4">Total Paid</th>
+                              <th className="py-2 pr-4">Total Paid</th>
                               <th className="py-2 pr-4">Due Amount</th>
                               <th className="py-2 pr-4">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
                             {progressJobs.length === 0 ? (
-                              <tr><td className="py-4 pr-4 text-gray-500" colSpan={7}>No records.</td></tr>
+                              <tr><td className="py-4 pr-4 text-gray-500" colSpan={8}>No records.</td></tr>
                             ) : progressJobs.map(it => (
                               <tr key={it.id}>
                                 <td className="py-2 pr-4">{
@@ -757,13 +1148,27 @@ export default function JobCardsPage() {
                                 <td className="py-2 pr-4">{editId === it.id ? (
                                   <input className="input" value={editForm.title || it.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} />
                                 ) : it.title}</td>
-                                <td className="py-2 pr-4">{editId === it.id ? (
-                                  <select className="input" value={editForm.status || it.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
-                                    <option value="open">Open</option>
-                                    <option value="in_progress">In Progress</option>
-                                    <option value="done">Done</option>
-                                  </select>
-                                ) : it.status}</td>
+                                <td className="py-2 pr-4">
+                                  {editingStatusId === it.id ? (
+                                    <select
+                                      className="input"
+                                      value={it.status}
+                                      onChange={(e) => updateStatus(it.id, e.target.value)}
+                                      onBlur={() => setEditingStatusId(null)}
+                                    >
+                                      <option value="open">Open</option>
+                                      <option value="in_progress">In Progress</option>
+                                      <option value="done">Done</option>
+                                    </select>
+                                  ) : (
+                                    <button
+                                      onClick={() => setEditingStatusId(it.id)}
+                                      className="btn-secondary text-xs"
+                                    >
+                                      {it.status}
+                                    </button>
+                                  )}
+                                </td>
                                 <td className="py-2 pr-4">{typeof it.confirmed_amount === 'number' ? formatCurrency(Number(it.confirmed_amount)) : (it.confirmed_amount ? String(it.confirmed_amount) : '-')}</td>
                                 <td className="py-2 pr-4">{
                                   editId === it.id ? (
@@ -802,10 +1207,27 @@ export default function JobCardsPage() {
                                     </div>
                                   ) : (
                                     <div className="flex gap-2">
-                                      <button onClick={() => startEdit(it)} className="btn-secondary">Edit</button>
-                                      <button onClick={() => openInvoiceModal(it)} className="btn-secondary">Invoice</button>
-                                      <button onClick={() => viewJobCardPdf(it)} className="btn-primary">View Job Card</button>
-                                      <button onClick={() => remove(it.id)} className="btn-danger flex items-center gap-1"><Trash2 className="w-4 h-4" /> Delete</button>
+                                      <button onClick={() => startEdit(it)} className="btn-secondary" title="Edit">
+                                        <Edit className="w-4 h-4" />
+                                      </button>
+                                      <button onClick={() => openTaskModal(it)} className="btn-secondary" title="Tasks">
+                                        <CheckSquare className="w-4 h-4" />
+                                      </button>
+                                      <button onClick={() => openPaymentModal(it)} className="btn-secondary" title="View Payment History">
+                                        <Receipt className="w-4 h-4" />
+                                      </button>
+                                      <button onClick={() => openExpensesModal(it)} className="btn-secondary" title="View Expenses">
+                                        <DollarSign className="w-4 h-4" />
+                                      </button>
+                                      <button onClick={() => openInvoiceModal(it)} className="btn-secondary" title="Invoice">
+                                        <FileText className="w-4 h-4" />
+                                      </button>
+                                      <button onClick={() => viewJobCardPdf(it)} className="btn-primary" title="View Job Card">
+                                        <Eye className="w-4 h-4" />
+                                      </button>
+                                      <button onClick={() => remove(it.id)} className="btn-danger" title="Delete">
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
                                     </div>
                                   )}
                                 </td>
@@ -833,27 +1255,54 @@ export default function JobCardsPage() {
                   {invoiceError && <div className="mb-3 bg-red-50 border-2 border-red-200 text-red-800 px-4 py-2 rounded-xl">{invoiceError}</div>}
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-sm text-gray-600 mb-1">Collect Now (optional)</label>
+                      <label className="block text-sm text-gray-600 mb-1">Collect Payment Now (Optional)</label>
                       <input
                         type="number"
                         step="0.01"
                         className="input"
                         max={invoiceDue}
-                        min={0.01}
+                        min={0}
+                        placeholder="0.00"
                         value={invoiceCollect}
                         onChange={e => {
-                          const raw = Number(e.target.value);
-                          let val = Number.isFinite(raw) ? raw : 0;
+                          const inputValue = e.target.value;
+                          // Allow empty input for better UX
+                          if (inputValue === '') {
+                            setInvoiceCollect('');
+                            setInvoiceRemaining(invoiceDue);
+                            return;
+                          }
+                          
+                          const raw = Number(inputValue);
+                          if (!Number.isFinite(raw)) return; // Invalid number, don't update
+                          
+                          let val = raw;
                           if (val > invoiceDue) {
                             val = invoiceDue;
                             setInvoiceError('Amount reduced to current due');
                             setTimeout(() => setInvoiceError(null), 1500);
                           }
-                          if (val < 0.01) { val = 0.01; }
-                          setInvoiceCollect(val.toFixed(2));
+                          if (val < 0) { val = 0; }
+                          
+                          setInvoiceCollect(val.toString());
                           setInvoiceRemaining(Math.max(0, invoiceDue - val));
                         }}
+                        onBlur={e => {
+                          // Format on blur
+                          const raw = Number(e.target.value);
+                          if (Number.isFinite(raw)) {
+                            let val = raw;
+                            if (val > invoiceDue) val = invoiceDue;
+                            if (val < 0) val = 0;
+                            setInvoiceCollect(val.toFixed(2));
+                            setInvoiceRemaining(Math.max(0, invoiceDue - val));
+                          } else {
+                            setInvoiceCollect('0.00');
+                            setInvoiceRemaining(invoiceDue);
+                          }
+                        }}
                       />
+                      <p className="text-xs text-gray-500 mt-1">Enter amount to collect now (0 to collect later)</p>
                     </div>
                     <div>
                       <label className="block text-sm text-gray-600 mb-1">Method</label>
@@ -875,6 +1324,312 @@ export default function JobCardsPage() {
                   <div className="mt-5 flex items-center justify-end gap-3">
                     <button onClick={() => { setShowInvoiceModal(false); setInvoiceTarget(null); }} className="btn-secondary flex items-center gap-2"><X className="w-4 h-4" /> Cancel</button>
                     <button onClick={submitInvoice} className="btn-primary flex items-center gap-2"><Save className="w-4 h-4" /> Create</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Task Management Modal */}
+            {showTaskModal && taskModalTarget && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6 max-h-[80vh] overflow-y-auto">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      📋 Task Tracker - {taskModalTarget.title}
+                    </h3>
+                    <button
+                      onClick={() => { setShowTaskModal(false); setTaskModalTarget(null); }}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
+
+                  {/* Task Statistics */}
+                  <div className="grid grid-cols-3 gap-4 mb-6">
+                    <div className="bg-blue-50 p-4 rounded-xl text-center">
+                      <div className="text-2xl font-bold text-blue-600">{(taskModalTarget.tasks || []).length}</div>
+                      <div className="text-sm text-blue-700">Total Tasks</div>
+                    </div>
+                    <div className="bg-green-50 p-4 rounded-xl text-center">
+                      <div className="text-2xl font-bold text-green-600">{(taskModalTarget.tasks || []).filter(t => t.completed).length}</div>
+                      <div className="text-sm text-green-700">Completed</div>
+                    </div>
+                    <div className="bg-orange-50 p-4 rounded-xl text-center">
+                      <div className="text-2xl font-bold text-orange-600">{(taskModalTarget.tasks || []).filter(t => !t.completed).length}</div>
+                      <div className="text-sm text-orange-700">Pending</div>
+                    </div>
+                  </div>
+
+                  {/* Progress Bar */}
+                  {(taskModalTarget.tasks || []).length > 0 && (
+                    <div className="mb-6">
+                      <div className="flex justify-between text-sm text-gray-600 mb-2">
+                        <span>Progress</span>
+                        <span>{Math.round(((taskModalTarget.tasks || []).filter(t => t.completed).length / (taskModalTarget.tasks || []).length) * 100)}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-3">
+                        <div
+                          className="bg-gradient-to-r from-purple-500 to-pink-500 h-3 rounded-full transition-all duration-300"
+                          style={{ width: `${((taskModalTarget.tasks || []).filter(t => t.completed).length / (taskModalTarget.tasks || []).length) * 100}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tasks List */}
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-gray-900">Tasks</h4>
+                    {(taskModalTarget.tasks || []).length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <div className="text-4xl mb-2">📝</div>
+                        <div>No tasks added yet</div>
+                        <div className="text-sm">Add tasks when creating or editing the job card</div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {(taskModalTarget.tasks || []).map((task, idx) => (
+                          <div key={task.id || idx} className={`p-4 rounded-xl border-2 transition-all duration-200 ${task.completed
+                              ? 'bg-green-50 border-green-200'
+                              : 'bg-white border-gray-200 hover:border-purple-300'
+                            }`}>
+                            <div className="flex items-start gap-3">
+                              <input
+                                type="checkbox"
+                                checked={task.completed}
+                                disabled={updatingTaskId === task.id}
+                                onChange={async () => {
+                                  if (!task.id) return;
+                                  setUpdatingTaskId(task.id);
+                                  try {
+                                    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${taskModalTarget.id}/tasks/${task.id}/toggle`, {
+                                      method: 'PATCH',
+                                      headers: {
+                                        'Content-Type': 'application/json',
+                                        Accept: 'application/json',
+                                        Authorization: `Bearer ${token}`
+                                      }
+                                    });
+                                    if (response.ok) {
+                                      const updatedTask = await response.json();
+                                      // Update local state
+                                      const updatedTasks = [...(taskModalTarget.tasks || [])];
+                                      const taskIndex = updatedTasks.findIndex(t => t.id === task.id);
+                                      if (taskIndex !== -1) {
+                                        updatedTasks[taskIndex] = updatedTask;
+                                        setTaskModalTarget({ ...taskModalTarget, tasks: updatedTasks });
+                                      }
+                                      // Refresh the job cards list to reflect changes
+                                      if (token) fetchList(token, page?.current_page || 1);
+                                    } else {
+                                      console.error('Failed to toggle task:', response.statusText);
+                                      // Show error message
+                                      setError('Failed to update task status');
+                                      setTimeout(() => setError(null), 3000);
+                                    }
+                                  } catch (error) {
+                                    console.error('Failed to toggle task:', error);
+                                    setError('Failed to update task status');
+                                    setTimeout(() => setError(null), 3000);
+                                  } finally {
+                                    setUpdatingTaskId(null);
+                                  }
+                                }}
+                                className="w-5 h-5 mt-0.5 text-purple-600 rounded focus:ring-purple-500 disabled:opacity-50"
+                              />
+                              <div className="flex-1">
+                                <div className={`font-medium text-lg ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
+                                  {task.title}
+                                </div>
+                                {task.description && (
+                                  <div className={`text-sm mt-1 ${task.completed ? 'text-gray-400' : 'text-gray-600'}`}>
+                                    {task.description}
+                                  </div>
+                                )}
+                                {task.completed && task.completed_at && (
+                                  <div className="text-xs text-green-600 mt-2 flex items-center gap-1">
+                                    ✅ Completed {new Date(task.completed_at).toLocaleDateString()}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-6 flex justify-end">
+                    <button
+                      onClick={() => { setShowTaskModal(false); setTaskModalTarget(null); }}
+                      className="btn-secondary flex items-center gap-2"
+                    >
+                      <X className="w-4 h-4" /> Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Payment History Modal */}
+            {showPaymentModal && paymentModalTarget && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl p-6 max-h-[80vh] overflow-y-auto">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      <Receipt className="w-5 h-5" />
+                      Payment History - {paymentModalTarget.title}
+                    </h3>
+                    <button
+                      onClick={() => { setShowPaymentModal(false); setPaymentModalTarget(null); setPayments([]); }}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
+
+                  {payments.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <Receipt className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                      <div>No payments recorded yet</div>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="adminTable" role="table" aria-label="Payment history table">
+                        <thead>
+                          <tr className="text-left text-gray-500">
+                            <th className="py-2 pr-4">Date</th>
+                            <th className="py-2 pr-4">Amount</th>
+                            <th className="py-2 pr-4">Method</th>
+                            <th className="py-2 pr-4">Reference</th>
+                            <th className="py-2 pr-4">Invoice</th>
+                            <th className="py-2 pr-4">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {payments.map((payment, idx) => (
+                            <tr key={payment.id || idx}>
+                              <td className="py-2 pr-4">{new Date(payment.paid_at).toLocaleDateString()}</td>
+                              <td className="py-2 pr-4">{formatCurrency(payment.amount)}</td>
+                              <td className="py-2 pr-4">{payment.method || '-'}</td>
+                              <td className="py-2 pr-4">{payment.reference || '-'}</td>
+                              <td className="py-2 pr-4">{payment.invoice ? `INV-${payment.invoice.number}` : '-'}</td>
+                              <td className="py-2 pr-4">
+                                <span className={`px-2 py-1 rounded-full text-xs ${
+                                  payment.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                }`}>
+                                  {payment.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  <div className="mt-6 flex justify-end">
+                    <button
+                      onClick={() => { setShowPaymentModal(false); setPaymentModalTarget(null); setPayments([]); }}
+                      className="btn-secondary flex items-center gap-2"
+                    >
+                      <X className="w-4 h-4" /> Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Expenses Modal */}
+            {showExpensesModal && expensesModalTarget && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl p-6 max-h-[80vh] overflow-y-auto">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      <DollarSign className="w-5 h-5" />
+                      Job Card Expenses - {expensesModalTarget.title}
+                    </h3>
+                    <button
+                      onClick={() => { setShowExpensesModal(false); setExpensesModalTarget(null); setExpenses([]); setTotalIncome(0); }}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
+
+                  {/* Financial Overview Chart */}
+                  <div className="mb-6 flex justify-center">
+                    <DonutChart
+                      income={totalIncome}
+                      expense={expenses.reduce((sum, e) => sum + Number(e.amount), 0)}
+                      centerTop="Net"
+                      centerBottom={formatCurrency(totalIncome - expenses.reduce((sum, e) => sum + Number(e.amount), 0))}
+                    />
+                  </div>
+
+                  {expenses.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <DollarSign className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                      <div>No expenses recorded for this job card</div>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="adminTable" role="table" aria-label="Job card expenses table">
+                        <thead>
+                          <tr className="text-left text-gray-500">
+                            <th className="py-2 pr-4">Event Type</th>
+                            <th className="py-2 pr-4">Amount</th>
+                            <th className="py-2 pr-4">Description</th>
+                            <th className="py-2 pr-4">Vendor</th>
+                            <th className="py-2 pr-4">Date</th>
+                            <th className="py-2 pr-4">Receipt</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {expenses.map((expense, idx) => (
+                            <tr key={expense.id || idx}>
+                              <td className="py-2 pr-4">{expense.event_type}</td>
+                              <td className="py-2 pr-4">{formatCurrency(expense.amount)}</td>
+                              <td className="py-2 pr-4">{expense.description}</td>
+                              <td className="py-2 pr-4">{expense.vendor || '-'}</td>
+                              <td className="py-2 pr-4">{new Date(expense.expense_date).toLocaleDateString()}</td>
+                              <td className="py-2 pr-4">
+                                {expense.receipt_path ? (
+                                  <a
+                                    href={`${process.env.NEXT_PUBLIC_API_URL}/storage/${expense.receipt_path}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 underline"
+                                  >
+                                    View
+                                  </a>
+                                ) : (
+                                  '-'
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr>
+                            <td className="py-2 pr-4 font-semibold" colSpan={4}>Total Income</td>
+                            <td className="py-2 pr-4 font-semibold">{formatCurrency(totalIncome)}</td>
+                            <td className="py-2 pr-4"></td>
+                          </tr>
+                          <tr>
+                            <td className="py-2 pr-4 font-semibold" colSpan={4}>Total Expenses</td>
+                            <td className="py-2 pr-4"></td>
+                            <td className="py-2 pr-4 font-semibold">{formatCurrency(expenses.reduce((sum, e) => sum + Number(e.amount), 0))}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+
+                  <div className="mt-6 flex justify-end">
+                    <button
+                      onClick={() => { setShowExpensesModal(false); setExpensesModalTarget(null); setExpenses([]); setTotalIncome(0); }}
+                      className="btn-secondary flex items-center gap-2"
+                    >
+                      <X className="w-4 h-4" /> Close
+                    </button>
                   </div>
                 </div>
               </div>

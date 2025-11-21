@@ -11,6 +11,7 @@ import { hasBusinessAccess, isBusinessOrPhotographer, isFreeExpired } from "@/li
 
 interface Entry { id: number; type: 'income' | 'expense'; amount: number; category?: string; date: string; notes?: string; is_payment?: boolean; balance: number; currency?: string }
 interface Payment { id: number; amount: number; created_at: string; photo_title?: string; user_name?: string; currency?: string }
+interface JobCardExpense { id: number; job_card_id: number; event_type: string; amount: number; description: string; expense_date: string; vendor?: string; receipt_path?: string; metadata?: any; job_card?: { id: number; title: string } }
 interface Page<T> { data: T[]; current_page: number; last_page: number; }
 
 export default function AccountingPage() {
@@ -23,13 +24,19 @@ export default function AccountingPage() {
   const [form, setForm] = useState<Partial<Entry>>({ type: 'expense' });
   const [editId, setEditId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Partial<Entry>>({});
+  const [creatingJobCardExpense, setCreatingJobCardExpense] = useState(false);
+  const [jobCardExpenseForm, setJobCardExpenseForm] = useState<Partial<JobCardExpense & { receipt?: File }>>({});
+  const [jobCards, setJobCards] = useState<Array<{id: number, title: string}>>([]);
   const [userCurrency, setUserCurrency] = useState<string>('USD');
-  const [activeTab, setActiveTab] = useState<'entries' | 'pl' | 'balance'>('entries');
+  const [activeTab, setActiveTab] = useState<string>('entries');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [showIncome, setShowIncome] = useState<boolean>(true);
   const [showExpense, setShowExpense] = useState<boolean>(true);
   const [showBalance, setShowBalance] = useState<boolean>(true);
+  const [expenseType, setExpenseType] = useState<string>('general');
+  const [jobCardExpenses, setJobCardExpenses] = useState<Page<JobCardExpense> | null>(null);
+  const [eventTypes, setEventTypes] = useState<Record<string, string>>({});
   const chartRef = useRef<SVGSVGElement>(null as any);
   const donutRef = useRef<SVGSVGElement>(null as any);
 
@@ -294,7 +301,12 @@ export default function AccountingPage() {
     // Enforce plan gating for business suite
     if (!isBusinessOrPhotographer() || !hasBusinessAccess()) { router.replace(isFreeExpired() ? '/pricing' : '/upgrade'); return; }
     setToken(t);
-    fetchUserCurrency(t).then(() => fetchList(t, 1));
+    fetchUserCurrency(t).then(() => {
+      fetchList(t, 1);
+      fetchJobCardExpenses(t, 1);
+      fetchEventTypes(t);
+      fetchJobCards(t);
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -304,6 +316,41 @@ export default function AccountingPage() {
       if (res.ok) {
         const data = await res.json();
         setUserCurrency((data?.currency as string) || 'USD');
+      }
+    } catch (e) { /* ignore */ }
+  };
+
+  const fetchJobCardExpenses = async (t: string, p: number = 1) => {
+    setLoading(true); setError(null);
+    try {
+      const params = new URLSearchParams({
+        per_page: '1000',
+        page: p.toString(),
+        ...(startDate && { start_date: startDate }),
+        ...(endDate && { end_date: endDate }),
+      });
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-card-expenses?${params}`, { headers: { Accept: 'application/json', Authorization: `Bearer ${t}` } });
+      const data = res.ok ? await res.json() : { data: [] };
+      setJobCardExpenses(data);
+    } catch (e: any) { setError(e?.message || 'Failed to load job card expenses'); } finally { setLoading(false); }
+  };
+
+  const fetchEventTypes = async (t: string) => {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-card-expenses/event-types`, { headers: { Accept: 'application/json', Authorization: `Bearer ${t}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setEventTypes(data);
+      }
+    } catch (e) { /* ignore */ }
+  };
+
+  const fetchJobCards = async (t: string) => {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards?per_page=1000`, { headers: { Accept: 'application/json', Authorization: `Bearer ${t}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setJobCards(data.data || []);
       }
     } catch (e) { /* ignore */ }
   };
@@ -326,7 +373,7 @@ export default function AccountingPage() {
       }));
 
       // Fetch manual entries
-      const entriesRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/accounting?per_page=1000&page=1`, { headers: { Accept: 'application/json', Authorization: `Bearer ${t}` } });
+      const entriesRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/accounting?per_page=1000&page=1&expense_type=general`, { headers: { Accept: 'application/json', Authorization: `Bearer ${t}` } });
       const entriesData = entriesRes.ok ? await entriesRes.json() : { data: [] };
 
       // Combine and sort by date, force display currency to user's selected currency
@@ -358,6 +405,33 @@ export default function AccountingPage() {
   const saveEdit = async (id: number) => { if (!token) return; try { const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/accounting/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(editForm) }); const data = await res.json(); if (!res.ok) throw new Error(data?.message || 'Update failed'); cancelEdit(); fetchList(token, page?.current_page || 1); } catch (e: any) { setError(e?.message || 'Update failed'); } };
   const remove = async (id: number) => { if (!token) return; if (!confirm('Delete this entry?')) return; try { const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/accounting/${id}`, { method: 'DELETE', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } }); if (!res.ok) throw new Error('Delete failed'); fetchList(token, page?.current_page || 1); } catch (e: any) { setError(e?.message || 'Delete failed'); } };
 
+  const createJobCardExpense = async () => {
+    if (!token) return;
+    try {
+      const formData = new FormData();
+      Object.entries(jobCardExpenseForm).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          if (key === 'receipt' && value instanceof File) {
+            formData.append('receipt', value);
+          } else {
+            formData.append(key, value.toString());
+          }
+        }
+      });
+
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-card-expenses`, {
+        method: 'POST',
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || 'Create failed');
+      setCreatingJobCardExpense(false);
+      setJobCardExpenseForm({});
+      fetchJobCardExpenses(token, 1);
+    } catch (e: any) { setError(e?.message || 'Create failed'); }
+  };
+
   return (
     <main>
       <Navbar />
@@ -365,14 +439,42 @@ export default function AccountingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="bg-white rounded-3xl shadow-2xl p-8 md:p-10">
             <AdminSectionHeader title="Accounting" subtitle="View all income from payments and manage expenses">
-              <button
-                onClick={() => setCreating(true)}
-                className="newBtn flex items-center gap-2"
-                aria-label="Add new expense"
-              >
-                <Plus className="w-4 h-4" aria-hidden="true" /> Add Expense
-              </button>
+              {expenseType === 'general' ? (
+                <button
+                  onClick={() => setCreating(true)}
+                  className="newBtn flex items-center gap-2"
+                  aria-label="Add new expense"
+                >
+                  <Plus className="w-4 h-4" aria-hidden="true" /> Add Expense
+                </button>
+              ) : (
+                <button
+                  onClick={() => setCreatingJobCardExpense(true)}
+                  className="newBtn flex items-center gap-2"
+                  aria-label="Add job card expense"
+                >
+                  <Plus className="w-4 h-4" aria-hidden="true" /> Add Job Card Expense
+                </button>
+              )}
             </AdminSectionHeader>
+
+            {/* Expense Type Selector */}
+            <div className="mb-6">
+              <div className="inline-flex p-1 rounded-xl bg-white ring-1 ring-gray-200 shadow-xs">
+                <button
+                  onClick={() => setExpenseType('general')}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold ${expenseType === 'general' ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'}`}
+                >
+                  General Expenses
+                </button>
+                <button
+                  onClick={() => setExpenseType('job_card')}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold ${expenseType === 'job_card' ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'}`}
+                >
+                  Job Card Expenses
+                </button>
+              </div>
+            </div>
             {error && <div className="mb-4 bg-red-50 border-2 border-red-200 text-red-800 px-6 py-3 rounded-xl">{error}</div>}
             {creating && (
               <div className="mb-6 p-4 border-2 border-gray-100 rounded-xl">
@@ -389,6 +491,80 @@ export default function AccountingPage() {
                 <div className="mt-4 flex gap-3">
                   <button onClick={createItem} className="btn-primary flex items-center gap-2"><Save className="w-4 h-4" /> Save</button>
                   <button onClick={() => setCreating(false)} className="btn-secondary flex items-center gap-2"><X className="w-4 h-4" /> Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {/* Job Card Expense Creation Form */}
+            {creatingJobCardExpense && (
+              <div className="mb-6 p-4 border-2 border-gray-100 rounded-xl">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <select
+                    className="input"
+                    value={jobCardExpenseForm.job_card_id?.toString() || ''}
+                    onChange={(e) => setJobCardExpenseForm({ ...jobCardExpenseForm, job_card_id: Number(e.target.value) })}
+                  >
+                    <option value="">Select Job Card</option>
+                    {jobCards.map(jobCard => (
+                      <option key={jobCard.id} value={jobCard.id}>
+                        #{jobCard.id} - {jobCard.title}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="input"
+                    value={jobCardExpenseForm.event_type || ''}
+                    onChange={(e) => setJobCardExpenseForm({ ...jobCardExpenseForm, event_type: e.target.value })}
+                  >
+                    <option value="">Select Event Type</option>
+                    <option value="wedding_shoot">Wedding shoot</option>
+                    <option value="pre_shoot">Pre shoot</option>
+                    <option value="homecoming_shoot">Home Comming</option>
+                    <option value="other_shoot">Other Shoot</option>
+                    {Object.entries(eventTypes).map(([key, label]) => (
+                      <option key={key} value={key}>{label}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    placeholder="Amount"
+                    value={jobCardExpenseForm.amount?.toString() || ''}
+                    onChange={(e) => setJobCardExpenseForm({ ...jobCardExpenseForm, amount: Number(e.target.value) })}
+                  />
+                  <input
+                    type="datetime-local"
+                    className="input"
+                    value={jobCardExpenseForm.expense_date || ''}
+                    onChange={(e) => setJobCardExpenseForm({ ...jobCardExpenseForm, expense_date: e.target.value })}
+                  />
+                  <input
+                    className="input"
+                    placeholder="Vendor (optional)"
+                    value={jobCardExpenseForm.vendor || ''}
+                    onChange={(e) => setJobCardExpenseForm({ ...jobCardExpenseForm, vendor: e.target.value })}
+                  />
+                  <input
+                    type="file"
+                    className="input"
+                    accept="image/*,.pdf"
+                    onChange={(e) => setJobCardExpenseForm({ ...jobCardExpenseForm, receipt: e.target.files?.[0] })}
+                  />
+                  <textarea
+                    className="input md:col-span-2"
+                    placeholder="Description"
+                    value={jobCardExpenseForm.description || ''}
+                    onChange={(e) => setJobCardExpenseForm({ ...jobCardExpenseForm, description: e.target.value })}
+                  />
+                </div>
+                <div className="mt-4 flex gap-3">
+                  <button onClick={createJobCardExpense} className="btn-primary flex items-center gap-2">
+                    <Save className="w-4 h-4" /> Save
+                  </button>
+                  <button onClick={() => setCreatingJobCardExpense(false)} className="btn-secondary flex items-center gap-2">
+                    <X className="w-4 h-4" /> Cancel
+                  </button>
                 </div>
               </div>
             )}
@@ -437,16 +613,28 @@ export default function AccountingPage() {
                 {/* Derived data */}
                 {(() => {
                   const all = page?.data || [];
+                  const jobCardExpenseData = jobCardExpenses?.data || [];
                   const startTs = startDate ? new Date(startDate).getTime() : -Infinity;
                   const endTs = endDate ? new Date(endDate).getTime() + 24*60*60*1000 - 1 : Infinity; // inclusive end
                   const filtered = all.filter(e => {
                     const t = new Date(e.date).getTime();
                     return t >= startTs && t <= endTs;
                   });
+
+                  // Filter job card expenses by date
+                  const filteredJobCardExpenses = jobCardExpenseData.filter(e => {
+                    const t = new Date(e.expense_date).getTime();
+                    return t >= startTs && t <= endTs;
+                  });
+
                   const totals = filtered.reduce((acc, e) => {
                     if (e.type === 'income') acc.income += Number(e.amount); else acc.expense += Number(e.amount);
                     return acc;
                   }, { income: 0, expense: 0 });
+
+                  // Add job card expenses to total expenses
+                  totals.expense += filteredJobCardExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+
                   const net = totals.income - totals.expense;
 
                   const balanceAsOfEnd = all.reduce((bal, e) => {
@@ -536,22 +724,42 @@ export default function AccountingPage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {Object.entries(filtered.reduce((acc: any, e) => {
-                                const k = e.category || 'General';
-                                acc[k] ||= { income: 0, expense: 0 };
-                                if (e.type === 'income') acc[k].income += Number(e.amount); else acc[k].expense += Number(e.amount);
-                                return acc;
-                              }, {})).map(([cat, v]: any) => {
-                                const nn = v.income - v.expense;
-                                return (
-                                  <tr key={cat} className="border-t border-gray-100">
-                                    <td className="py-2 pr-4">{cat}</td>
-                                    <td className="py-2 pr-4 text-emerald-700 font-medium">{formatMoney(v.income, userCurrency)}</td>
-                                    <td className="py-2 pr-4 text-rose-700 font-medium">{formatMoney(v.expense, userCurrency)}</td>
-                                    <td className={`py-2 pr-4 font-semibold ${nn >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{formatMoney(nn, userCurrency)}</td>
-                                  </tr>
-                                );
-                              })}
+                              {(() => {
+                                // Combine general expenses and job card expenses
+                                const generalByCategory = filtered.reduce((acc: any, e) => {
+                                  const k = e.category || 'General';
+                                  acc[k] ||= { income: 0, expense: 0 };
+                                  if (e.type === 'income') acc[k].income += Number(e.amount); else acc[k].expense += Number(e.amount);
+                                  return acc;
+                                }, {});
+
+                                const jobCardByCategory = filteredJobCardExpenses.reduce((acc: any, e) => {
+                                  const k = eventTypes[e.event_type] || e.event_type;
+                                  acc[k] ||= { income: 0, expense: 0 };
+                                  acc[k].expense += Number(e.amount);
+                                  return acc;
+                                }, {});
+
+                                // Merge the two
+                                const allCategories = { ...generalByCategory, ...jobCardByCategory };
+                                Object.keys(jobCardByCategory).forEach(cat => {
+                                  if (generalByCategory[cat]) {
+                                    allCategories[cat].expense += jobCardByCategory[cat].expense;
+                                  }
+                                });
+
+                                return Object.entries(allCategories).map(([cat, v]: any) => {
+                                  const nn = v.income - v.expense;
+                                  return (
+                                    <tr key={cat} className="border-t border-gray-100">
+                                      <td className="py-2 pr-4">{cat}</td>
+                                      <td className="py-2 pr-4 text-emerald-700 font-medium">{formatMoney(v.income, userCurrency)}</td>
+                                      <td className="py-2 pr-4 text-rose-700 font-medium">{formatMoney(v.expense, userCurrency)}</td>
+                                      <td className={`py-2 pr-4 font-semibold ${nn >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{formatMoney(nn, userCurrency)}</td>
+                                    </tr>
+                                  );
+                                });
+                              })()}
                             </tbody>
                           </table>
                         </div>
@@ -585,8 +793,10 @@ export default function AccountingPage() {
                   return null;
                 })()}
 
-                {activeTab === 'entries' && (
-                <>
+                {activeTab === 'entries' ? (
+                <div>
+                <div className="space-y-8">
+                {expenseType === 'general' && (
                 <table className="adminTable" role="table" aria-label="Accounting entries table">
                   <thead>
                     <tr className="text-left text-gray-500">
@@ -638,8 +848,72 @@ export default function AccountingPage() {
                     })}
                   </tbody>
                 </table>
+                )}
 
-                {/* Charts below the table */}
+                {/* Job Card Expenses Table */}
+                {expenseType === 'job_card' && (
+                <table className="adminTable" role="table" aria-label="Job card expenses table">
+                  <thead>
+                    <tr className="text-left text-gray-500">
+                      <th className="py-2 pr-4">Event Type</th>
+                      <th className="py-2 pr-4">Job Card</th>
+                      <th className="py-2 pr-4">Amount</th>
+                      <th className="py-2 pr-4">Description</th>
+                      <th className="py-2 pr-4">Vendor</th>
+                      <th className="py-2 pr-4">Date</th>
+                      <th className="py-2 pr-4">Receipt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {jobCardExpenses?.data?.map((expense: JobCardExpense) => (
+                      <tr key={expense.id} className="hover:bg-rose-50/50 transition-colors">
+                        <td className="py-2 pr-4">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 ring-1 ring-blue-200">
+                            {eventTypes[expense.event_type] || expense.event_type}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-4">
+                          {expense.job_card ? (
+                            <span className="font-medium text-gray-900">
+                              #{expense.job_card.id} - {expense.job_card.title}
+                            </span>
+                          ) : (
+                            <span className="text-gray-500">Unknown</span>
+                          )}
+                        </td>
+                        <td className="py-2 pr-4 tabular-nums text-rose-700 font-semibold">
+                          {formatMoney(Number(expense.amount), userCurrency)}
+                        </td>
+                        <td className="py-2 pr-4">{expense.description}</td>
+                        <td className="py-2 pr-4">{expense.vendor || '-'}</td>
+                        <td className="py-2 pr-4">
+                          {new Intl.DateTimeFormat('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: '2-digit',
+                            timeZone: 'UTC'
+                          }).format(new Date(expense.expense_date))}
+                        </td>
+                        <td className="py-2 pr-4">
+                          {expense.receipt_path ? (
+                            <a
+                              href={`${process.env.NEXT_PUBLIC_API_URL}/storage/${expense.receipt_path}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-800 underline"
+                            >
+                              View Receipt
+                            </a>
+                          ) : (
+                            <span className="text-gray-500">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                )}
+                </div>
                 <div className="mt-8">
                   <div className="mb-3 flex items-center justify-between">
                     <div className="text-sm text-gray-600">Trends</div>
@@ -670,18 +944,46 @@ export default function AccountingPage() {
                   </div>
                   {(() => {
                     const all = page?.data || [];
-                    if (!all.length) return <div className="text-gray-500">No data to chart.</div>;
+                    if (!all.length && !jobCardExpenses?.data?.length) return <div className="text-gray-500">No data to chart.</div>;
                     // Determine range based on filters or dataset bounds
-                    const minTs = all.reduce((min, e) => Math.min(min, new Date(e.date).getTime()), Infinity);
-                    const maxTs = all.reduce((max, e) => Math.max(max, new Date(e.date).getTime()), -Infinity);
+                    const minTs = Math.min(
+                      all.reduce((min, e) => Math.min(min, new Date(e.date).getTime()), Infinity),
+                      jobCardExpenses?.data?.reduce((min, e) => Math.min(min, new Date(e.expense_date).getTime()), Infinity) || Infinity
+                    );
+                    const maxTs = Math.max(
+                      all.reduce((max, e) => Math.max(max, new Date(e.date).getTime()), -Infinity),
+                      jobCardExpenses?.data?.reduce((max, e) => Math.max(max, new Date(e.expense_date).getTime()), -Infinity) || -Infinity
+                    );
                     const startTs = startDate ? new Date(startDate).getTime() : minTs;
                     const endTs = endDate ? new Date(endDate).getTime() : maxTs;
                     const { labels, income, expense, balance } = buildDailySeries(all, startTs, endTs);
+
+                    // Add job card expenses to the expense series
+                    const jobCardExpenseSeries = buildDailySeries(
+                      jobCardExpenses?.data?.map(e => ({
+                        id: e.id,
+                        type: 'expense' as const,
+                        amount: e.amount,
+                        category: eventTypes[e.event_type] || 'Job Card Expense',
+                        date: e.expense_date,
+                        notes: e.description,
+                        balance: 0,
+                        currency: userCurrency,
+                        is_payment: false
+                      })) || [],
+                      startTs,
+                      endTs
+                    );
+
+                    // Combine expenses
+                    const combinedExpense = expense.map((exp, i) => exp + (jobCardExpenseSeries.expense[i] || 0));
+                    const combinedBalance = balance.map((bal, i) => bal - (jobCardExpenseSeries.expense[i] || 0));
+
                     if (!labels.length) return <div className="text-gray-500">No data in selected range.</div>;
                     const series = [] as Array<{ name: string; color: string; data: number[] }>;
                     if (showIncome) series.push({ name: 'Income', color: '#059669', data: income });
-                    if (showExpense) series.push({ name: 'Expense', color: '#e11d48', data: expense });
-                    if (showBalance) series.push({ name: 'Balance', color: '#2563eb', data: balance });
+                    if (showExpense) series.push({ name: 'Expense', color: '#e11d48', data: combinedExpense });
+                    if (showBalance) series.push({ name: 'Balance', color: '#2563eb', data: combinedBalance });
                     if (!series.length) return <div className="text-gray-500">All series hidden. Toggle at least one.</div>;
                     return (
                       <div className="rounded-2xl border-2 border-gray-100 p-4 bg-white">
@@ -690,8 +992,8 @@ export default function AccountingPage() {
                     );
                   })()}
                 </div>
-                </>
-                )}
+                </div>
+                ) : null}
               </div>
             )}
           </motion.div>

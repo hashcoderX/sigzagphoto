@@ -14,7 +14,7 @@ import { hasBusinessAccess, isBusinessOrPhotographer, isFreeExpired } from "@/li
 
 interface Customer { id: number; name: string; }
 interface NewCustomerPayload { name: string; email?: string; phone?: string; whatsapp?: string; company?: string; nic_or_dl?: string; address?: string; notes?: string; }
-interface Booking { id: number; customer_id: number; event_date: string; location?: string; status: string; notes?: string; customer?: Customer }
+interface Booking { id: number; customer_id: number; event_date: string; location?: string; status: string; notes?: string; customer?: Customer; wedding_shoot_date?: string; preshoot_date?: string; homecoming_date?: string; function_date?: string; event_covering_date?: string; custom_plan_date?: string; wedding_shoot_location?: string; preshoot_location?: string; homecoming_location?: string; function_location?: string; event_covering_location?: string; custom_plan_location?: string }
 interface Page<T> { data: T[]; current_page: number; last_page: number; }
 
 export default function BookingsPage() {
@@ -118,23 +118,23 @@ export default function BookingsPage() {
         headers: { Accept: 'application/json', Authorization: `Bearer ${t}` },
       });
       if (!res.ok) throw new Error('Failed to load calendar');
-      const data: Booking[] = await res.json();
-      const mapped = data.map(b => ({
-        id: b.id,
-        title: `${b.customer?.name ? b.customer.name : `#${b.customer_id}`} — ${b.status}` + (b.location ? ` @ ${b.location}` : ''),
-        start: new Date(b.event_date),
-        end: addHours(new Date(b.event_date), 1),
-        resource: b,
+      const data: any[] = await res.json();
+      const mapped = data.map(e => ({
+        id: e.id,
+        title: e.title,
+        start: new Date(e.start),
+        end: new Date(e.end),
+        resource: e.resource,
       }));
       setEvents(mapped);
       // compute next upcoming booking from now
       const now = new Date();
-      const future = data.filter(b => isAfter(new Date(b.event_date), now)).sort((a,b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
-      setNextBooking(future[0] || null);
+      const future = data.filter(e => isAfter(new Date(e.resource.event_date), now)).sort((a,b) => new Date(a.resource.event_date).getTime() - new Date(b.resource.event_date).getTime());
+      setNextBooking(future[0]?.resource || null);
   // compute counts for current range
   setTotalCount(data.length);
-  setCompletedCount(data.filter(b => b.status === 'completed').length);
-  setCancelledCount(data.filter(b => b.status === 'cancelled').length);
+  setCompletedCount(data.filter(e => e.resource.status === 'completed').length);
+  setCancelledCount(data.filter(e => e.resource.status === 'cancelled').length);
     } catch (e) {
       // noop; error box handled by main error
     } finally {
@@ -304,8 +304,12 @@ export default function BookingsPage() {
                       <thead>
                         <tr className="text-left text-gray-500">
                           <th className="py-1 pr-2">Customer</th>
-                          <th className="py-1 pr-2">Event Date</th>
-                          <th className="py-1 pr-2">Location</th>
+                          <th className="py-1 pr-2">Wedding Shoot</th>
+                          <th className="py-1 pr-2">Preshoot</th>
+                          <th className="py-1 pr-2">Homecoming</th>
+                          <th className="py-1 pr-2">Function</th>
+                          <th className="py-1 pr-2">Event Covering</th>
+                          <th className="py-1 pr-2">Custom Plan</th>
                           <th className="py-1 pr-2">Status</th>
                           <th className="py-1 pr-2">Actions</th>
                         </tr>
@@ -319,11 +323,71 @@ export default function BookingsPage() {
                               </select>
                             ) : (b.customer?.name || `#${b.customer_id}`)}</td>
                             <td className="py-1 pr-2">{editId === b.id ? (
-                              <input type="datetime-local" className="input" value={editForm.event_date || b.event_date} onChange={(e) => setEditForm({ ...editForm, event_date: e.target.value })} />
-                            ) : new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(new Date(b.event_date))}</td>
+                              <div className="flex flex-col gap-1">
+                                <input type="datetime-local" className="input" value={editForm.event_date || b.event_date} onChange={(e) => setEditForm({ ...editForm, event_date: e.target.value })} />
+                                <input className="input" placeholder="Location" value={editForm.wedding_shoot_location || b.wedding_shoot_location || ''} onChange={(e) => setEditForm({ ...editForm, wedding_shoot_location: e.target.value })} />
+                              </div>
+                            ) : (
+                              <div>
+                                <div>{new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(new Date(b.event_date))}</div>
+                                <div className="text-xs text-gray-500">{b.wedding_shoot_location || '-'}</div>
+                              </div>
+                            )}</td>
                             <td className="py-1 pr-2">{editId === b.id ? (
-                              <input className="input" value={editForm.location || b.location || ''} onChange={(e) => setEditForm({ ...editForm, location: e.target.value })} />
-                            ) : (b.location || '-')}</td>
+                              <div className="flex flex-col gap-1">
+                                <input type="datetime-local" className="input" value={editForm.preshoot_date || b.preshoot_date || ''} onChange={(e) => setEditForm({ ...editForm, preshoot_date: e.target.value })} />
+                                <input className="input" placeholder="Location" value={editForm.preshoot_location || b.preshoot_location || ''} onChange={(e) => setEditForm({ ...editForm, preshoot_location: e.target.value })} />
+                              </div>
+                            ) : (
+                              <div>
+                                <div>{b.preshoot_date ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(new Date(b.preshoot_date)) : '-'}</div>
+                                <div className="text-xs text-gray-500">{b.preshoot_location || '-'}</div>
+                              </div>
+                            )}</td>
+                            <td className="py-1 pr-2">{editId === b.id ? (
+                              <div className="flex flex-col gap-1">
+                                <input type="datetime-local" className="input" value={editForm.homecoming_date || b.homecoming_date || ''} onChange={(e) => setEditForm({ ...editForm, homecoming_date: e.target.value })} />
+                                <input className="input" placeholder="Location" value={editForm.homecoming_location || b.homecoming_location || ''} onChange={(e) => setEditForm({ ...editForm, homecoming_location: e.target.value })} />
+                              </div>
+                            ) : (
+                              <div>
+                                <div>{b.homecoming_date ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(new Date(b.homecoming_date)) : '-'}</div>
+                                <div className="text-xs text-gray-500">{b.homecoming_location || '-'}</div>
+                              </div>
+                            )}</td>
+                            <td className="py-1 pr-2">{editId === b.id ? (
+                              <div className="flex flex-col gap-1">
+                                <input type="datetime-local" className="input" value={editForm.function_date || b.function_date || ''} onChange={(e) => setEditForm({ ...editForm, function_date: e.target.value })} />
+                                <input className="input" placeholder="Location" value={editForm.function_location || b.function_location || ''} onChange={(e) => setEditForm({ ...editForm, function_location: e.target.value })} />
+                              </div>
+                            ) : (
+                              <div>
+                                <div>{b.function_date ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(new Date(b.function_date)) : '-'}</div>
+                                <div className="text-xs text-gray-500">{b.function_location || '-'}</div>
+                              </div>
+                            )}</td>
+                            <td className="py-1 pr-2">{editId === b.id ? (
+                              <div className="flex flex-col gap-1">
+                                <input type="datetime-local" className="input" value={editForm.event_covering_date || b.event_covering_date || ''} onChange={(e) => setEditForm({ ...editForm, event_covering_date: e.target.value })} />
+                                <input className="input" placeholder="Location" value={editForm.event_covering_location || b.event_covering_location || ''} onChange={(e) => setEditForm({ ...editForm, event_covering_location: e.target.value })} />
+                              </div>
+                            ) : (
+                              <div>
+                                <div>{b.event_covering_date ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(new Date(b.event_covering_date)) : '-'}</div>
+                                <div className="text-xs text-gray-500">{b.event_covering_location || '-'}</div>
+                              </div>
+                            )}</td>
+                            <td className="py-1 pr-2">{editId === b.id ? (
+                              <div className="flex flex-col gap-1">
+                                <input type="datetime-local" className="input" value={editForm.custom_plan_date || b.custom_plan_date || ''} onChange={(e) => setEditForm({ ...editForm, custom_plan_date: e.target.value })} />
+                                <input className="input" placeholder="Location" value={editForm.custom_plan_location || b.custom_plan_location || ''} onChange={(e) => setEditForm({ ...editForm, custom_plan_location: e.target.value })} />
+                              </div>
+                            ) : (
+                              <div>
+                                <div>{b.custom_plan_date ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(new Date(b.custom_plan_date)) : '-'}</div>
+                                <div className="text-xs text-gray-500">{b.custom_plan_location || '-'}</div>
+                              </div>
+                            )}</td>
                             <td className="py-1 pr-2">{editId === b.id ? (
                               <select className="input" value={editForm.status || b.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
                                 <option value="scheduled">Scheduled</option>
@@ -358,11 +422,13 @@ export default function BookingsPage() {
               </div>
             </div>
             {creating && (
-              <div className="mb-6 p-4 border-2 border-gray-100 rounded-xl">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="mb-6 p-6 border-2 border-gray-100 rounded-xl bg-gradient-to-br from-white to-gray-50 shadow-lg">
+                <h3 className="text-xl font-semibold mb-4 text-gray-800">Create New Booking</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Select Customer *</label>
                     <div className="flex items-center gap-2">
-                      <select className="input" value={form.customer_id || ''} onChange={(e) => setForm({ ...form, customer_id: Number(e.target.value) })}>
+                      <select className="input flex-1" value={form.customer_id || ''} onChange={(e) => setForm({ ...form, customer_id: Number(e.target.value) })}>
                         <option value="">Select customer *</option>
                         {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
@@ -370,20 +436,133 @@ export default function BookingsPage() {
                     </div>
                     {formErrors.customer_id && <p className="mt-1 text-sm text-red-600">{formErrors.customer_id}</p>}
                   </div>
-                  <div>
-                  <input type="datetime-local" step="1" className="input" value={form.event_date || ''} onChange={(e) => setForm({ ...form, event_date: e.target.value })} />
-                  {formErrors.event_date && <p className="mt-1 text-sm text-red-600">{formErrors.event_date}</p>}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                    <select className="input" value={form.status || 'scheduled'} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+                      <option value="scheduled">Scheduled</option>
+                      <option value="completed">Completed</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
                   </div>
-                  <input className="input" placeholder="Location" value={form.location || ''} onChange={(e) => setForm({ ...form, location: e.target.value })} />
-                  <select className="input" value={form.status || 'scheduled'} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-                    <option value="scheduled">Scheduled</option>
-                    <option value="completed">Completed</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
-                  <textarea className="input md:col-span-2" placeholder="Notes" value={form.notes || ''} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+                    <textarea className="input" placeholder="Notes" value={form.notes || ''} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+                  </div>
                 </div>
-                <div className="mt-4 flex gap-3">
-                  <button onClick={createItem} className="btn-primary flex items-center gap-2"><Save className="w-4 h-4" /> Save</button>
+                <h4 className="text-lg font-medium mb-4 text-gray-800">Booking Cases</h4>
+                <div className="flex flex-wrap gap-4 justify-center">
+                  <div className="bookingCaseCard">
+                    <div className="bookingCaseHeader">Wedding Shoot Booking</div>
+                    <div className="bookingCaseDesc">Main wedding ceremony photography</div>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <input
+                          type="datetime-local"
+                          className="input w-full"
+                          value={form.event_date || ''}
+                          onChange={(e) => setForm({ ...form, event_date: e.target.value })}
+                          placeholder="Select date and time"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <input className="input w-full" placeholder="Location" value={form.wedding_shoot_location || ''} onChange={(e) => setForm({ ...form, wedding_shoot_location: e.target.value })} />
+                      </div>
+                    </div>
+                    {formErrors.event_date && <p className="mt-1 text-sm text-red-600">{formErrors.event_date}</p>}
+                  </div>
+                  <div className="bookingCaseCard">
+                    <div className="bookingCaseHeader">Preshoot Day Booking</div>
+                    <div className="bookingCaseDesc">Pre-wedding shoot session</div>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <input
+                          type="datetime-local"
+                          className="input w-full"
+                          value={form.preshoot_date || ''}
+                          onChange={(e) => setForm({ ...form, preshoot_date: e.target.value })}
+                          placeholder="Select date and time"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <input className="input w-full" placeholder="Location" value={form.preshoot_location || ''} onChange={(e) => setForm({ ...form, preshoot_location: e.target.value })} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bookingCaseCard">
+                    <div className="bookingCaseHeader">Home Coming Day Shoot Booking</div>
+                    <div className="bookingCaseDesc">Post-wedding homecoming photography</div>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <input
+                          type="datetime-local"
+                          className="input w-full"
+                          value={form.homecoming_date || ''}
+                          onChange={(e) => setForm({ ...form, homecoming_date: e.target.value })}
+                          placeholder="Select date and time"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <input className="input w-full" placeholder="Location" value={form.homecoming_location || ''} onChange={(e) => setForm({ ...form, homecoming_location: e.target.value })} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bookingCaseCard">
+                    <div className="bookingCaseHeader">Function Booking</div>
+                    <div className="bookingCaseDesc">General function or event photography</div>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <input
+                          type="datetime-local"
+                          className="input w-full"
+                          value={form.function_date || ''}
+                          onChange={(e) => setForm({ ...form, function_date: e.target.value })}
+                          placeholder="Select date and time"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <input className="input w-full" placeholder="Location" value={form.function_location || ''} onChange={(e) => setForm({ ...form, function_location: e.target.value })} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bookingCaseCard">
+                    <div className="bookingCaseHeader">Event Covering Booking</div>
+                    <div className="bookingCaseDesc">Event coverage and documentation</div>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <input
+                          type="datetime-local"
+                          className="input w-full"
+                          value={form.event_covering_date || ''}
+                          onChange={(e) => setForm({ ...form, event_covering_date: e.target.value })}
+                          placeholder="Select date and time"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <input className="input w-full" placeholder="Location" value={form.event_covering_location || ''} onChange={(e) => setForm({ ...form, event_covering_location: e.target.value })} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bookingCaseCard">
+                    <div className="bookingCaseHeader">Custom Plan</div>
+                    <div className="bookingCaseDesc">Customized photography plan</div>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <input
+                          type="datetime-local"
+                          className="input w-full"
+                          value={form.custom_plan_date || ''}
+                          onChange={(e) => setForm({ ...form, custom_plan_date: e.target.value })}
+                          placeholder="Select date and time"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <input className="input w-full" placeholder="Location" value={form.custom_plan_location || ''} onChange={(e) => setForm({ ...form, custom_plan_location: e.target.value })} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-6 flex gap-3">
+                  <button onClick={createItem} className="btn-primary flex items-center gap-2"><Save className="w-4 h-4" /> Save Booking</button>
                   <button onClick={() => setCreating(false)} className="btn-secondary flex items-center gap-2"><X className="w-4 h-4" /> Cancel</button>
                 </div>
               </div>
@@ -448,8 +627,10 @@ export default function BookingsPage() {
         .nextBookingStatus.status-completed { background:linear-gradient(135deg,#059669,#10b981); }
         .nextBookingStatus.status-cancelled { background:linear-gradient(135deg,#dc2626,#f97316); }
         .nextBookingEmpty { font-size:.75rem; font-weight:500; color:#475569; padding:.4rem .65rem; background:#ffffff70; border:1px dashed #cbd5e1; border-radius:.75rem; }
-        .nextBookingCard:hover { box-shadow:0 18px 40px -10px rgba(99,102,241,0.45),0 6px 16px -6px rgba(31,41,55,0.12); transform:translateY(-3px); transition:box-shadow .35s, transform .35s; }
-        @media (prefers-reduced-motion: reduce) { .nextBookingCard:hover { transform:none; } }
+        .bookingCaseCard { background: linear-gradient(135deg,#f8fafc,#e2e8f0); border: 1px solid #cbd5e1; border-radius: 1rem; padding: 1rem; transition: transform .2s, box-shadow .2s; }
+        .bookingCaseCard:hover { transform: translateY(-2px); box-shadow: 0 8px 25px -8px rgba(0,0,0,0.15); }
+        .bookingCaseHeader { font-size: .9rem; font-weight: 700; color: #1e293b; margin-bottom: .25rem; }
+        .bookingCaseDesc { font-size: .75rem; color: #64748b; margin-bottom: .75rem; }
       `}</style>
       {showCustomerModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
