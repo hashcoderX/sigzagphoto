@@ -79,7 +79,7 @@ export default function RemindersPage() {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/bookings/calendar?start=${start}&end=${end}`, { headers: { Accept: 'application/json', Authorization: `Bearer ${t}` } });
       if (!res.ok) throw new Error('Failed to load upcoming bookings');
       const data = await res.json();
-      const bookings: Booking[] = (data || []).map((b: any) => ({ id: b.id, date: b.event_date, customer: b.customer }));
+      const bookings: Booking[] = (data || []).map((b: any) => ({ id: b.id, date: b.earliest_date, customer: b.customer }));
       setUpcomingBookings(bookings);
       // After loading, check reminder status for these bookings
       if (bookings.length) {

@@ -13,7 +13,7 @@ import { hasBusinessAccess, isBusinessOrPhotographer, isFreeExpired } from "@/li
 interface Customer { id: number; name: string; }
 interface Booking { id: number; }
 interface JobCard { id: number; title: string }
-interface Payment { id: number; customer_id: number; booking_id?: number | null; amount: number; currency: string; method?: string; status: string; paid_at?: string | null; customer?: Customer; booking?: Booking }
+interface Payment { id: number; customer_id: number; booking_id?: number | null; amount: number; currency: string; method?: string; status: string; paid_at?: string | null; customer?: Customer; booking?: Booking; payment_type?: string }
 interface Page<T> { data: T[]; current_page: number; last_page: number; }
 interface PaymentsSummary { today_total: number; month_total: number; currency?: string }
 
@@ -38,6 +38,7 @@ export default function PaymentsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [customerFilter, setCustomerFilter] = useState<number | "">("");
   const [jobCardFilter, setJobCardFilter] = useState<number | "">("");
+  const [paymentTypeFilter, setPaymentTypeFilter] = useState<string>("");
 
   useEffect(() => {
     const t = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
@@ -68,6 +69,7 @@ export default function PaymentsPage() {
       if (statusFilter) query.set('status', statusFilter);
       if (customerFilter) query.set('customer_id', String(customerFilter));
       if (jobCardFilter) query.set('job_card_id', String(jobCardFilter));
+      if (paymentTypeFilter) query.set('payment_type', paymentTypeFilter);
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/payments?${query.toString()}`, { headers: { Accept: 'application/json', Authorization: `Bearer ${t}` } }); if (!res.ok) throw new Error('Failed to load payments'); const data = await res.json(); setPage(data);
     }
     catch (e: any) { setError(e?.message || 'Failed to load payments'); } finally { setLoading(false); }
@@ -135,9 +137,14 @@ export default function PaymentsPage() {
                       <option value="">All Job Cards</option>
                       {jobCards.map(j => <option key={j.id} value={j.id}>#{j.id} {j.title}</option>)}
                     </select>
+                    <select className="filterSelect" value={paymentTypeFilter} onChange={(e) => setPaymentTypeFilter(e.target.value)}>
+                      <option value="">All Types</option>
+                      <option value="advance">Advance</option>
+                      <option value="transport">Transport</option>
+                    </select>
                     <div className="flex gap-2">
                       <button onClick={() => token && fetchList(token, 1)} className="actionBtn">Apply</button>
-                      <button onClick={() => { setQ(''); setStatusFilter(''); setCustomerFilter(''); setJobCardFilter(''); token && fetchList(token, 1); }} className="actionBtn">Reset</button>
+                      <button onClick={() => { setQ(''); setStatusFilter(''); setCustomerFilter(''); setJobCardFilter(''); setPaymentTypeFilter(''); token && fetchList(token, 1); }} className="actionBtn">Reset</button>
                       <button onClick={() => setCreating(true)} className="newBtn flex items-center gap-2"><Plus className="w-4 h-4" /> New Payment</button>
                     </div>
                   </div>
@@ -187,6 +194,7 @@ export default function PaymentsPage() {
                     <tr className="text-left text-gray-500">
                       <th className="py-2 pr-4">Customer</th>
                       <th className="py-2 pr-4">Amount</th>
+                      <th className="py-2 pr-4">Type</th>
                       <th className="py-2 pr-4">Status</th>
                       <th className="py-2 pr-4">Paid At</th>
                       <th className="py-2 pr-4">Actions</th>
@@ -197,6 +205,7 @@ export default function PaymentsPage() {
                       <tr key={p.id}>
                         <td className="py-2 pr-4">{p.customer?.name || `#${p.customer_id}`}</td>
                         <td className="py-2 pr-4">{p.currency} {Number(p.amount).toFixed(2)}</td>
+                        <td className="py-2 pr-4">{p.payment_type ? p.payment_type.charAt(0).toUpperCase() + p.payment_type.slice(1) : '-'}</td>
                         <td className="py-2 pr-4">{editId === p.id ? (
                           <select className="input" value={editForm.status || p.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
                             <option value="pending">Pending</option>

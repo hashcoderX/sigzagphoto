@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { motion } from "framer-motion";
-import { Briefcase, Users, DollarSign, Settings, BarChart3, CalendarCheck, FileText, BellRing, ClipboardList, Upload, Wallet } from "lucide-react";
+import { Briefcase, Users, DollarSign, Settings, BarChart3, CalendarCheck, BellRing, ClipboardList, Upload, Wallet, Package, Camera } from "lucide-react";
 import Link from "next/link";
 import AdminSectionHeader from "@/components/AdminSectionHeader";
 import { hasBusinessAccess, isFreeExpired } from "@/lib/access";
@@ -125,7 +125,7 @@ export default function AdminDashboardPage() {
                                         <h2 className="cardTitle">Transactions</h2>
                                         <p className="cardDesc">Withdrawals and payout history.</p>
                                     </Link>
-                                    
+
                                 </div>
                             </div>
 
@@ -153,6 +153,31 @@ export default function AdminDashboardPage() {
                                 }
                                 return null;
                             })()}
+                            {/* Package and Item Handling */}
+                            {hasBusinessAccess() && (
+                                <div className="suiteSection">
+                                    <div className="suiteHeader">
+                                        <div className="suiteIcon"><Package className="w-5 h-5" /></div>
+                                        <div>
+                                            <h3 className="suiteTitle">Package and Item Handling</h3>
+                                            <p className="suiteSubtitle">Manage photography packages and register items</p>
+                                        </div>
+                                    </div>
+                                    <div className="adminDashGrid" role="navigation" aria-label="Package and item management sections">
+                                        <Link href="/dashboard/admin/items" className="adminDashCard" aria-label="Register photography items">
+                                            <div className="cardIconWrap"><Camera className="cardIcon" aria-hidden="true" /></div>
+                                            <h2 className="cardTitle">Items</h2>
+                                            <p className="cardDesc">Register and manage photography items like Wedding Photoshoot, Preshoot, Event, etc.</p>
+                                        </Link>
+                                        <Link href="/dashboard/admin/packages" className="adminDashCard" aria-label="Manage photography packages">
+                                            <div className="cardIconWrap"><Package className="cardIcon" aria-hidden="true" /></div>
+                                            <h2 className="cardTitle">Packages</h2>
+                                            <p className="cardDesc">Create and manage photography packages.</p>
+                                        </Link>
+
+                                    </div>
+                                </div>
+                            )}
                             {(() => {
                                 const hasAccess = hasBusinessAccess();
                                 if (!hasAccess) return null;
@@ -166,41 +191,36 @@ export default function AdminDashboardPage() {
                                             </div>
                                         </div>
                                         <div className="adminDashGrid" role="navigation" aria-label="Business management sections">
-                                    <Link href="/dashboard/admin/customers" className="adminDashCard" aria-label="Customers module">
-                                        <div className="cardIconWrap"><Users className="cardIcon" aria-hidden="true" /></div>
-                                        <h2 className="cardTitle">Customers</h2>
-                                        <p className="cardDesc">Manage customer contacts and details.</p>
-                                    </Link>
-                                    <Link href="/dashboard/admin/bookings" className="adminDashCard" aria-label="Bookings module">
-                                        <div className="cardIconWrap"><CalendarCheck className="cardIcon" aria-hidden="true" /></div>
-                                        <h2 className="cardTitle">Bookings</h2>
-                                        <p className="cardDesc">Create and track your shoots and events.</p>
-                                    </Link>
-                                    <Link href="/dashboard/admin/job-cards" className="adminDashCard" aria-label="Job cards module">
-                                        <div className="cardIconWrap"><ClipboardList className="cardIcon" aria-hidden="true" /></div>
-                                        <h2 className="cardTitle">Job Cards</h2>
-                                        <p className="cardDesc">Tasks, assignments, and due dates.</p>
-                                    </Link>
-                                    <Link href="/dashboard/admin/invoices" className="adminDashCard" aria-label="Invoices module">
-                                        <div className="cardIconWrap"><FileText className="cardIcon" aria-hidden="true" /></div>
-                                        <h2 className="cardTitle">Invoices</h2>
-                                        <p className="cardDesc">Create and track invoices.</p>
-                                    </Link>
-                                    <Link href="/dashboard/admin/payments" className="adminDashCard" aria-label="Payments module">
-                                        <div className="cardIconWrap"><DollarSign className="cardIcon" aria-hidden="true" /></div>
-                                        <h2 className="cardTitle">Payments</h2>
-                                        <p className="cardDesc">Record and reconcile client payments.</p>
-                                    </Link>
-                                    <Link href="/dashboard/admin/reminders" className="adminDashCard" aria-label="Reminders module">
-                                        <div className="cardIconWrap"><BellRing className="cardIcon" aria-hidden="true" /></div>
-                                        <h2 className="cardTitle">Reminders</h2>
-                                        <p className="cardDesc">Follow-ups and alerts for key dates.</p>
-                                    </Link>
-                                    <Link href="/dashboard/admin/accounting" className="adminDashCard" aria-label="Accounting module">
-                                        <div className="cardIconWrap"><BarChart3 className="cardIcon" aria-hidden="true" /></div>
-                                        <h2 className="cardTitle">Accounting</h2>
-                                        <p className="cardDesc">Income, expenses, and categories.</p>
-                                    </Link>
+                                            <Link href="/dashboard/admin/customers" className="adminDashCard" aria-label="Customers module">
+                                                <div className="cardIconWrap"><Users className="cardIcon" aria-hidden="true" /></div>
+                                                <h2 className="cardTitle">Customers</h2>
+                                                <p className="cardDesc">Manage customer contacts and details.</p>
+                                            </Link>
+                                            <Link href="/dashboard/admin/bookings" className="adminDashCard" aria-label="Bookings module">
+                                                <div className="cardIconWrap"><CalendarCheck className="cardIcon" aria-hidden="true" /></div>
+                                                <h2 className="cardTitle">Bookings</h2>
+                                                <p className="cardDesc">Create and track your shoots and events.</p>
+                                            </Link>
+                                            <Link href="/dashboard/admin/job-cards" className="adminDashCard" aria-label="Job cards module">
+                                                <div className="cardIconWrap"><ClipboardList className="cardIcon" aria-hidden="true" /></div>
+                                                <h2 className="cardTitle">Job Cards</h2>
+                                                <p className="cardDesc">Tasks, assignments, and due dates.</p>
+                                            </Link>
+                                            <Link href="/dashboard/admin/payments" className="adminDashCard" aria-label="Payments module">
+                                                <div className="cardIconWrap"><DollarSign className="cardIcon" aria-hidden="true" /></div>
+                                                <h2 className="cardTitle">Payments</h2>
+                                                <p className="cardDesc">Record and reconcile client payments.</p>
+                                            </Link>
+                                            <Link href="/dashboard/admin/reminders" className="adminDashCard" aria-label="Reminders module">
+                                                <div className="cardIconWrap"><BellRing className="cardIcon" aria-hidden="true" /></div>
+                                                <h2 className="cardTitle">Reminders</h2>
+                                                <p className="cardDesc">Follow-ups and alerts for key dates.</p>
+                                            </Link>
+                                            <Link href="/dashboard/admin/accounting" className="adminDashCard" aria-label="Accounting module">
+                                                <div className="cardIconWrap"><BarChart3 className="cardIcon" aria-hidden="true" /></div>
+                                                <h2 className="cardTitle">Accounting</h2>
+                                                <p className="cardDesc">Income, expenses, and categories.</p>
+                                            </Link>
 
                                             <Link href="/dashboard/admin/settings" className="adminDashCard" aria-label="Settings module">
                                                 <div className="cardIconWrap"><Settings className="cardIcon" aria-hidden="true" /></div>
@@ -212,8 +232,10 @@ export default function AdminDashboardPage() {
                                 );
                             })()}
 
+
+
                             {/* Super Admin Suite */}
-                            {user && ['admin','super'].includes((user.role || '').toLowerCase()) && (
+                            {user && ['admin', 'super'].includes((user.role || '').toLowerCase()) && (
                                 <div className="suiteSection">
                                     <div className="suiteHeader">
                                         <div className="suiteIcon"><Users className="w-5 h-5" /></div>

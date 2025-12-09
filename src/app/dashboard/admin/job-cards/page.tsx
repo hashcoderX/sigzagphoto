@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { motion } from "framer-motion";
-import { Plus, Trash2, Save, X, Receipt, Edit, CheckSquare, FileText, Eye, DollarSign } from "lucide-react";
+import { Plus, Trash2, Save, X, Receipt, CheckSquare, FileText, DollarSign, Truck, Edit } from "lucide-react";
 import AdminSectionHeader from "@/components/AdminSectionHeader";
 import { hasBusinessAccess, isBusinessOrPhotographer, isFreeExpired } from "@/lib/access";
 
-interface Booking { id: number; customer_id: number; location?: string | null; event_date?: string; customer?: { id: number; name: string }; }
+interface Booking { id: number; customer_id: number; location?: string | null; earliest_date?: string; customer?: { id: number; name: string }; }
 interface JobCardItem { id?: number; service: string; qty: number; amount: number; sub_amount?: number; subamount?: number }
 interface Task { id?: number; title: string; description?: string; completed: boolean; completed_at?: string; created_at?: string }
-interface JobCard { id: number; booking_id: number; title: string; description?: string; status: string; assigned_to?: string; due_date?: string | null; confirmed_amount?: number | string | null; advance_payment?: number | string | null; discount?: number | string | null; booking?: Booking; items?: JobCardItem[]; tasks?: Task[] }
+interface JobCard { id: number; booking_id: number; title: string; description?: string; status: string; assigned_to?: string; due_date?: string | null; confirmed_amount?: number | string | null; advance_payment?: number | string | null; discount?: number | string | null; transport_charges?: number | string | null; transport_paid?: boolean; booking?: Booking; items?: JobCardItem[]; tasks?: Task[] }
 interface JobCardExpense { id: number; event_type: string; job_card_id: number; amount: number; description: string; vendor?: string; expense_date: string; receipt_path?: string; job_card?: { id: number; title: string } }
 type LineItem = { service: string; qty: number; amount: number; subamount: number };
 interface Page<T> { data: T[]; current_page: number; last_page: number; }
@@ -118,14 +118,6 @@ export default function JobCardsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<Partial<JobCard>>({ status: 'open' });
-  const [editId, setEditId] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState<Partial<JobCard>>({});
-  const [editItems, setEditItems] = useState<JobCardItem[]>([]);
-  const [editDiscount, setEditDiscount] = useState<string>('');
-  const [editLineService, setEditLineService] = useState('');
-  const [editLineQty, setEditLineQty] = useState('');
-  const [editLineAmount, setEditLineAmount] = useState('');
-  const [editLineError, setEditLineError] = useState<string | null>(null);
   // Items & currency state
   const [items, setItems] = useState<LineItem[]>([]);
   const [lineService, setLineService] = useState<string>('');
@@ -142,6 +134,13 @@ export default function JobCardsPage() {
   const [advanceMethod, setAdvanceMethod] = useState<string>('cash');
   const [advanceReference, setAdvanceReference] = useState<string>('');
   const [advanceError, setAdvanceError] = useState<string | null>(null);
+  // Transport collection modal state
+  const [showTransportModal, setShowTransportModal] = useState(false);
+  const [transportTarget, setTransportTarget] = useState<JobCard | null>(null);
+  const [transportAmount, setTransportAmount] = useState<string>('');
+  const [transportMethod, setTransportMethod] = useState<string>('cash');
+  const [transportReference, setTransportReference] = useState<string>('');
+  const [transportError, setTransportError] = useState<string | null>(null);
   // Invoice modal state for In Progress
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceTarget, setInvoiceTarget] = useState<JobCard | null>(null);
@@ -153,16 +152,22 @@ export default function JobCardsPage() {
   const [invoiceError, setInvoiceError] = useState<string | null>(null);
   const [tempDue, setTempDue] = useState<Record<number, number>>({});
   const [editingStatusId, setEditingStatusId] = useState<number | null>(null);
+  // Invoice Templates state
+  const [invoiceTemplates, setInvoiceTemplates] = useState<any[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
   // Task tracking state
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDescription, setNewTaskDescription] = useState('');
-  const [editTasks, setEditTasks] = useState<Task[]>([]);
-  const [editNewTaskTitle, setEditNewTaskTitle] = useState('');
-  const [editNewTaskDescription, setEditNewTaskDescription] = useState('');
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [taskModalTarget, setTaskModalTarget] = useState<JobCard | null>(null);
   const [updatingTaskId, setUpdatingTaskId] = useState<number | null>(null);
+  // Task add/edit modal state
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [taskFormTitle, setTaskFormTitle] = useState('');
+  const [taskFormDescription, setTaskFormDescription] = useState('');
+  const [taskFormError, setTaskFormError] = useState<string | null>(null);
   // Payment history modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentModalTarget, setPaymentModalTarget] = useState<JobCard | null>(null);
@@ -172,6 +177,45 @@ export default function JobCardsPage() {
   const [expensesModalTarget, setExpensesModalTarget] = useState<JobCard | null>(null);
   const [expenses, setExpenses] = useState<JobCardExpense[]>([]);
   const [totalIncome, setTotalIncome] = useState<number>(0);
+  // Expense add/edit modal state
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<JobCardExpense | null>(null);
+  const [expenseFormEventType, setExpenseFormEventType] = useState('');
+  const [expenseFormAmount, setExpenseFormAmount] = useState('');
+  const [expenseFormDescription, setExpenseFormDescription] = useState('');
+  const [expenseFormVendor, setExpenseFormVendor] = useState('');
+  const [expenseFormDate, setExpenseFormDate] = useState('');
+  const [expenseFormReceipt, setExpenseFormReceipt] = useState<File | null>(null);
+  const [expenseFormError, setExpenseFormError] = useState<string | null>(null);
+  const [expenseFormLoading, setExpenseFormLoading] = useState(false);
+
+  const loadInvoiceTemplates = async (tokenParam?: string) => {
+    const authToken = tokenParam || token;
+    if (!authToken) {
+      console.log('No token available for loading templates');
+      return;
+    }
+    try {
+      console.log('Loading invoice templates...');
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/invoice-templates`, {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${authToken}` }
+      });
+      console.log('API response status:', res.status);
+      if (res.ok) {
+        const data = await res.json();
+        console.log('API response data:', data);
+        // Since we changed to get() instead of paginate(), data is now the array directly
+        setInvoiceTemplates(Array.isArray(data) ? data : data?.data || []);
+        console.log('Templates loaded:', Array.isArray(data) ? data.length : (data?.data?.length || 0));
+      } else {
+        console.error('Failed to load templates, status:', res.status);
+        const errorText = await res.text();
+        console.error('Error response:', errorText);
+      }
+    } catch (error) {
+      console.error('Failed to load invoice templates:', error);
+    }
+  };
 
   useEffect(() => {
     const t = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
@@ -182,6 +226,7 @@ export default function JobCardsPage() {
     fetchList(t, 1);
     fetchBookings(t);
     fetchProfile(t);
+    loadInvoiceTemplates(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -205,7 +250,8 @@ export default function JobCardsPage() {
   // Derived totals
   const itemsSubtotal = items.reduce((s, it) => s + it.subamount, 0);
   const discountNum = (() => { const n = Number(discount); return Number.isFinite(n) && n > 0 ? +n.toFixed(2) : 0; })();
-  const finalAmount = Math.max(0, +(itemsSubtotal - discountNum).toFixed(2));
+  const transportChargesNum = (() => { const n = Number(form.transport_charges); return Number.isFinite(n) && n > 0 ? +n.toFixed(2) : 0; })();
+  const finalAmount = Math.max(0, +(itemsSubtotal - discountNum + transportChargesNum).toFixed(2));
 
   // Note: We no longer auto-sync confirmed_amount; user can set advance payment separately.
 
@@ -247,94 +293,9 @@ export default function JobCardsPage() {
       setTasks([]); setNewTaskTitle(''); setNewTaskDescription('');
       fetchList(token, 1);
       setSuccessMessage('Job card created successfully.');
-      // Auto-download Job Card PDF after create
-      try {
-        if (data?.id) {
-          const pdfRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${data.id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
-          if (pdfRes.ok) {
-            const blob = await pdfRes.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = `job-card-${data.id}.pdf`;
-            document.body.appendChild(a); a.click(); a.remove();
-            URL.revokeObjectURL(url);
-          }
-        }
-      } catch { }
     }
     catch (e: any) { setError(e?.message || 'Create failed'); }
   };
-
-  const startEdit = (it: JobCard) => {
-    setEditId(it.id);
-    setEditForm({ ...it });
-    // Initialize editable items list
-    const mapped = (it.items || []).map(item => ({
-      id: item.id,
-      service: item.service,
-      qty: Number(item.qty),
-      amount: Number(item.amount),
-      sub_amount: Number(item.sub_amount ?? item.subamount ?? (Number(item.amount) * Number(item.qty))),
-      subamount: Number(item.sub_amount ?? item.subamount ?? (Number(item.amount) * Number(item.qty)))
-    }));
-    setEditItems(mapped);
-    setEditDiscount(it.discount ? String(it.discount) : '');
-    // Initialize editable tasks list
-    setEditTasks(it.tasks || []);
-  };
-  const cancelEdit = () => { setEditId(null); setEditForm({}); setEditItems([]); setEditDiscount(''); setEditTasks([]); setEditNewTaskTitle(''); setEditNewTaskDescription(''); };
-  const saveEdit = async (id: number) => {
-    if (!token) return;
-    setError(null); setSuccessMessage(null);
-    try {
-      // Prepare items payload
-      const preparedItems = editItems.map(it => ({
-        service: it.service,
-        qty: it.qty,
-        amount: Number(it.amount),
-        subamount: Number((it.sub_amount ?? it.subamount ?? (it.amount * it.qty)).toFixed(2))
-      }));
-      const payload: any = { ...editForm };
-      payload.items = preparedItems;
-      payload.discount = editDiscount !== '' ? Number(editDiscount) : undefined;
-      payload.tasks = editTasks.map(task => ({
-        id: task.id,
-        title: task.title,
-        description: task.description,
-        completed: task.completed,
-        completed_at: task.completed_at
-      }));
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || 'Update failed');
-      cancelEdit();
-      fetchList(token, page?.current_page || 1);
-      setSuccessMessage('Job card updated successfully.');
-    } catch (e: any) { setError(e?.message || 'Update failed'); }
-  };
-  const addEditLineItem = () => {
-    setEditLineError(null);
-    const svc = editLineService.trim();
-    const qty = Number(editLineQty);
-    const amt = Number(editLineAmount);
-    if (!svc) { setEditLineError('Item is required'); return; }
-    if (!Number.isFinite(qty) || qty <= 0) { setEditLineError('Qty must be positive'); return; }
-    if (!Number.isFinite(amt) || amt < 0) { setEditLineError('Amount must be >= 0'); return; }
-    const sub = +(amt * qty).toFixed(2);
-    setEditItems(prev => [...prev, { service: svc, qty, amount: +amt.toFixed(2), sub_amount: sub, subamount: sub }]);
-    setEditLineService(''); setEditLineQty(''); setEditLineAmount('');
-  };
-
-  const removeEditItem = (idx: number) => {
-    setEditItems(prev => prev.filter((_, i) => i !== idx));
-  };
-
-  const editItemsSubtotal = editItems.reduce((s, it) => s + Number(it.sub_amount ?? it.subamount ?? (it.amount * it.qty)), 0);
-  const editDiscountNum = (() => { const n = Number(editDiscount); return Number.isFinite(n) && n > 0 ? +n.toFixed(2) : 0; })();
-  const editFinalAmount = Math.max(0, +(editItemsSubtotal - editDiscountNum).toFixed(2));
-  const editAdvance = Number(editForm.advance_payment ?? 0);
-  const editDueAmount = Math.max(0, editFinalAmount - editAdvance);
-  const remove = async (id: number) => { if (!token) return; if (!confirm('Delete this job card?')) return; try { const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${id}`, { method: 'DELETE', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } }); if (!res.ok) throw new Error('Delete failed'); fetchList(token, page?.current_page || 1); setSuccessMessage('Job card deleted.'); } catch (e: any) { setError(e?.message || 'Delete failed'); } };
 
   const updateStatus = async (id: number, status: string) => {
     if (!token) return;
@@ -383,38 +344,130 @@ export default function JobCardsPage() {
     setTasks(prev => prev.filter((_, idx) => idx !== taskIndex));
   };
 
-  const addEditTask = () => {
-    if (!editNewTaskTitle.trim()) return;
-    const task: Task = {
-      title: editNewTaskTitle.trim(),
-      description: editNewTaskDescription.trim() || undefined,
-      completed: false,
-      created_at: new Date().toISOString()
-    };
-    setEditTasks(prev => [...prev, task]);
-    setEditNewTaskTitle('');
-    setEditNewTaskDescription('');
-  };
-
-  const toggleEditTaskCompletion = (taskIndex: number) => {
-    setEditTasks(prev => prev.map((task, idx) =>
-      idx === taskIndex
-        ? {
-          ...task,
-          completed: !task.completed,
-          completed_at: !task.completed ? new Date().toISOString() : undefined
-        }
-        : task
-    ));
-  };
-
-  const removeEditTask = (taskIndex: number) => {
-    setEditTasks(prev => prev.filter((_, idx) => idx !== taskIndex));
-  };
-
   const openTaskModal = (jobCard: JobCard) => {
     setTaskModalTarget(jobCard);
     setShowTaskModal(true);
+  };
+
+  // Task CRUD functions
+  const openAddTaskForm = () => {
+    setEditingTask(null);
+    setTaskFormTitle('');
+    setTaskFormDescription('');
+    setTaskFormError(null);
+    setShowTaskForm(true);
+  };
+
+  const openEditTaskForm = (task: Task) => {
+    setEditingTask(task);
+    setTaskFormTitle(task.title);
+    setTaskFormDescription(task.description || '');
+    setTaskFormError(null);
+    setShowTaskForm(true);
+  };
+
+  const closeTaskForm = () => {
+    setShowTaskForm(false);
+    setEditingTask(null);
+    setTaskFormTitle('');
+    setTaskFormDescription('');
+    setTaskFormError(null);
+  };
+
+  const saveTask = async () => {
+    if (!token || !taskModalTarget) return;
+
+    if (!taskFormTitle.trim()) {
+      setTaskFormError('Task title is required');
+      return;
+    }
+
+    try {
+      const taskData = {
+        title: taskFormTitle.trim(),
+        description: taskFormDescription.trim() || null,
+      };
+
+      let response;
+      if (editingTask) {
+        // Update existing task
+        response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${taskModalTarget.id}/tasks/${editingTask.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify(taskData)
+        });
+      } else {
+        // Create new task
+        response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${taskModalTarget.id}/tasks`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify(taskData)
+        });
+      }
+
+      if (response.ok) {
+        const updatedTask = await response.json();
+        // Update local state
+        const updatedTasks = [...(taskModalTarget.tasks || [])];
+        if (editingTask) {
+          const taskIndex = updatedTasks.findIndex(t => t.id === editingTask.id);
+          if (taskIndex !== -1) {
+            updatedTasks[taskIndex] = updatedTask;
+          }
+        } else {
+          updatedTasks.push(updatedTask);
+        }
+        setTaskModalTarget({ ...taskModalTarget, tasks: updatedTasks });
+        // Refresh the job cards list
+        fetchList(token, page?.current_page || 1);
+        closeTaskForm();
+        setSuccessMessage(editingTask ? 'Task updated successfully' : 'Task added successfully');
+      } else {
+        const error = await response.json();
+        setTaskFormError(error.message || 'Failed to save task');
+      }
+    } catch (error) {
+      console.error('Failed to save task:', error);
+      setTaskFormError('Failed to save task');
+    }
+  };
+
+  const deleteTask = async (task: Task) => {
+    if (!token || !taskModalTarget || !task.id) return;
+
+    if (!confirm('Are you sure you want to delete this task?')) return;
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${taskModalTarget.id}/tasks/${task.id}`, {
+        method: 'DELETE',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        // Update local state
+        const updatedTasks = (taskModalTarget.tasks || []).filter(t => t.id !== task.id);
+        setTaskModalTarget({ ...taskModalTarget, tasks: updatedTasks });
+        // Refresh the job cards list
+        fetchList(token, page?.current_page || 1);
+        setSuccessMessage('Task deleted successfully');
+      } else {
+        setError('Failed to delete task');
+      }
+    } catch (error) {
+      console.error('Failed to delete task:', error);
+      setError('Failed to delete task');
+    }
   };
 
   const openPaymentModal = async (jobCard: JobCard) => {
@@ -464,6 +517,152 @@ export default function JobCardsPage() {
     }
   };
 
+  // Expense CRUD functions
+  const openAddExpenseForm = () => {
+    setEditingExpense(null);
+    setExpenseFormEventType('');
+    setExpenseFormAmount('');
+    setExpenseFormDescription('');
+    setExpenseFormVendor('');
+    setExpenseFormDate(new Date().toISOString().split('T')[0]);
+    setExpenseFormReceipt(null);
+    setExpenseFormError(null);
+    setShowExpenseForm(true);
+  };
+
+  const openEditExpenseForm = (expense: JobCardExpense) => {
+    setEditingExpense(expense);
+    setExpenseFormEventType(expense.event_type);
+    setExpenseFormAmount(expense.amount.toString());
+    setExpenseFormDescription(expense.description);
+    setExpenseFormVendor(expense.vendor || '');
+    setExpenseFormDate(expense.expense_date.split('T')[0]);
+    setExpenseFormReceipt(null);
+    setExpenseFormError(null);
+    setShowExpenseForm(true);
+  };
+
+  const closeExpenseForm = () => {
+    setShowExpenseForm(false);
+    setEditingExpense(null);
+    setExpenseFormEventType('');
+    setExpenseFormAmount('');
+    setExpenseFormDescription('');
+    setExpenseFormVendor('');
+    setExpenseFormDate('');
+    setExpenseFormReceipt(null);
+    setExpenseFormError(null);
+    setExpenseFormLoading(false);
+  };
+
+  const saveExpense = async () => {
+    if (!token || !expensesModalTarget) return;
+
+    if (!expenseFormEventType.trim() || !expenseFormAmount.trim() || !expenseFormDescription.trim() || !expenseFormDate) {
+      setExpenseFormError('All fields except vendor and receipt are required');
+      return;
+    }
+
+    const amount = parseFloat(expenseFormAmount);
+    if (isNaN(amount) || amount <= 0) {
+      setExpenseFormError('Amount must be a positive number');
+      return;
+    }
+
+    setExpenseFormLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('job_card_id', expensesModalTarget.id.toString());
+      formData.append('event_type', expenseFormEventType.trim());
+      formData.append('amount', amount.toString());
+      formData.append('description', expenseFormDescription.trim());
+      formData.append('expense_date', expenseFormDate);
+      if (expenseFormVendor.trim()) {
+        formData.append('vendor', expenseFormVendor.trim());
+      }
+      if (expenseFormReceipt) {
+        formData.append('receipt', expenseFormReceipt);
+      }
+
+      let response;
+      if (editingExpense) {
+        // Update existing expense
+        response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-card-expenses/${editingExpense.id}`, {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`,
+            'X-HTTP-Method-Override': 'PATCH'
+          },
+          body: formData
+        });
+      } else {
+        // Create new expense
+        response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-card-expenses`, {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: formData
+        });
+      }
+
+      if (response.ok) {
+        const updatedExpense = await response.json();
+        // Update local state
+        const updatedExpenses = [...expenses];
+        if (editingExpense) {
+          const expenseIndex = updatedExpenses.findIndex(e => e.id === editingExpense.id);
+          if (expenseIndex !== -1) {
+            updatedExpenses[expenseIndex] = updatedExpense;
+          }
+        } else {
+          updatedExpenses.push(updatedExpense);
+        }
+        setExpenses(updatedExpenses);
+        closeExpenseForm();
+        setSuccessMessage(editingExpense ? 'Expense updated successfully' : 'Expense added successfully');
+      } else {
+        const error = await response.json();
+        setExpenseFormError(error.message || 'Failed to save expense');
+      }
+    } catch (error) {
+      console.error('Failed to save expense:', error);
+      setExpenseFormError('Failed to save expense');
+    } finally {
+      setExpenseFormLoading(false);
+    }
+  };
+
+  const deleteExpense = async (expense: JobCardExpense) => {
+    if (!token) return;
+
+    if (!confirm('Are you sure you want to delete this expense? This action cannot be undone.')) return;
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-card-expenses/${expense.id}`, {
+        method: 'DELETE',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        // Update local state
+        const updatedExpenses = expenses.filter(e => e.id !== expense.id);
+        setExpenses(updatedExpenses);
+        setSuccessMessage('Expense deleted successfully');
+      } else {
+        setError('Failed to delete expense');
+      }
+    } catch (error) {
+      console.error('Failed to delete expense:', error);
+      setError('Failed to delete expense');
+    }
+  };
+
   const collectAdvance = async (it: JobCard) => {
     if (!token) return;
     const amtStr = window.prompt('Enter advance amount to collect:', '0.00');
@@ -502,26 +701,6 @@ export default function JobCardsPage() {
         }
       } catch { }
     } catch (e: any) { setError(e?.message || 'Failed to record payment'); }
-  };
-
-  const viewJobCardPdf = async (it: JobCard) => {
-    if (!token) return;
-    try {
-      const pdfRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${it.id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!pdfRes.ok) throw new Error('Failed to load job card PDF');
-      const blob = await pdfRes.blob();
-      const url = URL.createObjectURL(blob);
-      // Try to open in new tab for viewing; fallback to download
-      const opened = window.open(url, '_blank');
-      if (!opened) {
-        const a = document.createElement('a');
-        a.href = url; a.download = `job-card-${it.id}.pdf`;
-        document.body.appendChild(a); a.click(); a.remove();
-      }
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
-    } catch (e: any) {
-      setError(e?.message || 'Could not open Job Card PDF');
-    }
   };
 
   const openAdvanceModal = (it: JobCard) => {
@@ -565,18 +744,6 @@ export default function JobCardsPage() {
       setAdvanceTarget(null);
       setSuccessMessage('Advance payment recorded.');
       if (token) fetchList(token, page?.current_page || 1);
-      // Download receipt PDF
-      try {
-        const pdfRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/payments/${data.id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
-        if (pdfRes.ok) {
-          const blob = await pdfRes.blob();
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url; a.download = `payment-${data.id}.pdf`;
-          document.body.appendChild(a); a.click(); a.remove();
-          URL.revokeObjectURL(url);
-        }
-      } catch { }
     } catch (e: any) {
       setAdvanceError(e?.message || 'Failed to record advance');
     }
@@ -610,6 +777,8 @@ export default function JobCardsPage() {
     const collect = Number(invoiceCollect || 0);
     if (!Number.isFinite(collect) || collect < 0) { setInvoiceError('Collect amount must be 0 or greater'); return; }
     if (collect > invoiceDue) { setInvoiceError('Collect amount cannot exceed current due'); return; }
+    if (!selectedTemplateId) { setInvoiceError('Please select an invoice template'); return; }
+
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${invoiceTarget.id}/invoice`, {
         method: 'POST',
@@ -618,6 +787,32 @@ export default function JobCardsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || 'Failed to create invoice');
+
+      // Generate PDF using selected template
+      try {
+        const pdfRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/invoice-templates/${selectedTemplateId}/pdf?invoice_id=${data.id}`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (pdfRes.ok) {
+          // Create a blob from the PDF response and trigger download
+          const pdfBlob = await pdfRes.blob();
+          const pdfUrl = URL.createObjectURL(pdfBlob);
+          const link = document.createElement('a');
+          link.href = pdfUrl;
+          link.download = `invoice-${data.number || data.id}.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(pdfUrl);
+        } else {
+          console.warn('Failed to generate PDF, but invoice was created successfully');
+        }
+      } catch (pdfError) {
+        console.warn('PDF generation failed, but invoice was created successfully:', pdfError);
+      }
+
       // Compute remaining due using API response if available
       const newDue = typeof data?.due_amount === 'number' ? Number(data.due_amount) : Math.max(0, invoiceDue - (Number(invoiceCollect) || 0));
       if (invoiceTarget) {
@@ -625,23 +820,10 @@ export default function JobCardsPage() {
       }
       setShowInvoiceModal(false);
       setInvoiceTarget(null);
+      setSelectedTemplateId(null);
       setSuccessMessage(`Invoice created. Remaining due: ${formatCurrency(newDue)}`);
       // Optional refetch to sync other fields; UI due is already updated instantly
       if (token) fetchList(token, page?.current_page || 1);
-      // Download invoice PDF
-      try {
-        if (data?.id) {
-          const pdfRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/invoices/${data.id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
-          if (pdfRes.ok) {
-            const blob = await pdfRes.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = `invoice-${data.number || data.id}.pdf`;
-            document.body.appendChild(a); a.click(); a.remove();
-            URL.revokeObjectURL(url);
-          }
-        }
-      } catch { }
     } catch (e: any) {
       setInvoiceError(e?.message || 'Failed to create invoice');
     }
@@ -653,12 +835,62 @@ export default function JobCardsPage() {
     const c = Number((it as any).confirmed_amount ?? 0);
     const cNum = Number.isFinite(c) ? c : 0;
     const totalPaid = typeof (it as any).total_paid === 'number' ? Number((it as any).total_paid) : null;
+    const transportCharges = Number((it as any).transport_charges ?? 0);
+
     if (totalPaid !== null && Number.isFinite(totalPaid)) {
-      return Math.max(0, cNum - totalPaid);
+      // Due Amount = (Photography Amount + Transport Charges) - Total Paid
+      // confirmed_amount is photography subtotal only, transport_charges is separate
+      const totalAmount = cNum + transportCharges;
+      return Math.max(0, totalAmount - totalPaid);
     }
     const adv = Number((it as any).advance_payment ?? 0);
     const advNum = Number.isFinite(adv) ? adv : 0;
-    return Math.max(0, cNum - advNum);
+    return Math.max(0, cNum + transportCharges - advNum);
+  };
+
+  const openTransportModal = (it: JobCard) => {
+    // Only allow if transport charges exist and haven't been paid yet
+    const transport = Number((it as any).transport_charges ?? 0);
+    if (transport <= 0) return; // hidden in UI, but double guard
+    setTransportTarget(it);
+    setTransportAmount(transport.toFixed(2));
+    setTransportMethod('cash');
+    setTransportReference('');
+    setTransportError(null);
+    setShowTransportModal(true);
+  };
+
+  const submitTransport = async () => {
+    if (!token || !transportTarget) return;
+    setTransportError(null);
+    const amount = Number(transportAmount);
+    if (!Number.isFinite(amount) || amount <= 0) { setTransportError('Amount must be a positive number'); return; }
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          customer_id: (transportTarget as any).booking?.customer?.id || (transportTarget as any).booking?.customer_id || 0,
+          booking_id: (transportTarget as any).booking?.id || transportTarget.booking_id,
+          job_card_id: transportTarget.id,
+          amount,
+          currency: userCurrency,
+          method: transportMethod || 'cash',
+          reference: transportReference || undefined,
+          status: 'paid',
+          paid_at: new Date().toISOString(),
+          payment_type: 'transport',
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || 'Failed to record transport payment');
+      setShowTransportModal(false);
+      setTransportTarget(null);
+      setSuccessMessage('Transport payment recorded.');
+      if (token) fetchList(token, page?.current_page || 1);
+    } catch (e: any) {
+      setTransportError(e?.message || 'Failed to record transport payment');
+    }
   };
 
   return (
@@ -752,8 +984,12 @@ export default function JobCardsPage() {
                           <label className="text-sm text-gray-600">Discount:</label>
                           <input type="number" step="0.01" className="input w-40" placeholder="0.00" value={discount} onChange={(e) => setDiscount(e.target.value)} />
                         </div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm text-gray-600">Transport Charges:</label>
+                          <input type="number" step="0.01" className="input w-40" placeholder="0.00" value={(form.transport_charges as any) || ''} onChange={(e) => setForm({ ...form, transport_charges: e.target.value === '' ? undefined : Number(e.target.value) })} />
+                        </div>
                         <div className="text-right">
-                          <span className="text-sm text-gray-600 mr-2">Final Amount:</span>
+                          <span className="text-sm text-gray-600 mr-2">Final Amount (incl. Transport):</span>
                           <span className="text-xl font-extrabold text-gray-900">{formatCurrency(finalAmount)}</span>
                         </div>
                         <div className="text-right">
@@ -844,137 +1080,6 @@ export default function JobCardsPage() {
             )}
 
             {successMessage && <div className="mb-4 bg-green-50 border-2 border-green-200 text-green-800 px-6 py-3 rounded-xl">{successMessage}</div>}
-            {editId && (
-              <div className="mb-12 p-5 border-2 border-indigo-100 rounded-xl bg-indigo-50">
-                <h2 className="text-2xl font-bold text-gray-900 mb-4">Edit Job Card Items</h2>
-                {editLineError && <div className="mb-3 text-sm text-red-600">{editLineError}</div>}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
-                  <input className="input md:col-span-2" placeholder="Item" value={editLineService} onChange={e => setEditLineService(e.target.value)} />
-                  <input type="number" className="input" placeholder="Qty" value={editLineQty} onChange={e => setEditLineQty(e.target.value)} />
-                  <input type="number" step="0.01" className="input" placeholder="Amount" value={editLineAmount} onChange={e => setEditLineAmount(e.target.value)} />
-                </div>
-                <button type="button" onClick={addEditLineItem} className="btn-secondary mb-4">Add +</button>
-                <div className="overflow-x-auto mb-4">
-                  <table className="adminTable" role="table" aria-label="Job card editing items table">
-                    <thead>
-                      <tr className="text-left text-gray-500">
-                        <th className="py-2 pr-4">Item</th>
-                        <th className="py-2 pr-4">Qty</th>
-                        <th className="py-2 pr-4">Amount</th>
-                        <th className="py-2 pr-4">Sub Amount</th>
-                        <th className="py-2 pr-4">Remove</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {editItems.length === 0 ? (
-                        <tr><td className="py-2 pr-4 text-gray-500" colSpan={5}>No items.</td></tr>
-                      ) : editItems.map((it, idx) => (
-                        <tr key={idx}>
-                          <td className="py-2 pr-4">
-                            <input className="input" value={it.service} onChange={e => {
-                              const v = e.target.value; setEditItems(prev => prev.map((p, i) => i === idx ? { ...p, service: v } : p));
-                            }} />
-                          </td>
-                          <td className="py-2 pr-4">
-                            <input type="number" className="input" value={it.qty} onChange={e => {
-                              const v = Number(e.target.value); setEditItems(prev => prev.map((p, i) => i === idx ? { ...p, qty: v, sub_amount: +(p.amount * v).toFixed(2), subamount: +(p.amount * v).toFixed(2) } : p));
-                            }} />
-                          </td>
-                          <td className="py-2 pr-4">
-                            <input type="number" step="0.01" className="input" value={it.amount} onChange={e => {
-                              const v = Number(e.target.value); setEditItems(prev => prev.map((p, i) => i === idx ? { ...p, amount: v, sub_amount: +(v * p.qty).toFixed(2), subamount: +(v * p.qty).toFixed(2) } : p));
-                            }} />
-                          </td>
-                          <td className="py-2 pr-4">{formatCurrency(Number(it.sub_amount ?? it.subamount ?? (it.amount * it.qty)))}</td>
-                          <td className="py-2 pr-4"><button type="button" onClick={() => removeEditItem(idx)} className="btn-danger">Remove</button></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    {editItems.length > 0 && (
-                      <tfoot>
-                        <tr>
-                          <td className="py-2 pr-4 font-semibold" colSpan={4}>Items Total</td>
-                          <td className="py-2 pr-4 font-semibold">{formatCurrency(editItemsSubtotal)}</td>
-                        </tr>
-                      </tfoot>
-                    )}
-                  </table>
-                </div>
-                <div className="flex items-center gap-3 mb-4">
-                  <label className="text-sm text-gray-600">Discount:</label>
-                  <input type="number" step="0.01" className="input w-40" placeholder="0.00" value={editDiscount} onChange={e => setEditDiscount(e.target.value)} />
-                </div>
-                <div className="flex flex-col items-end gap-1 mb-4">
-                  <div><span className="text-sm text-gray-600 mr-2">Final Amount:</span><span className="text-lg font-bold">{formatCurrency(editFinalAmount)}</span></div>
-                  <div><span className="text-sm text-gray-600 mr-2">Advance:</span><span className="text-lg font-bold">{formatCurrency(editAdvance)}</span></div>
-                  <div><span className="text-sm text-gray-600 mr-2">Due:</span><span className="text-lg font-bold">{formatCurrency(editDueAmount)}</span></div>
-                </div>
-                {/* Edit Tasks Section */}
-                <div className="mb-4 p-4 border-2 border-purple-100 rounded-xl bg-gradient-to-r from-purple-50 to-pink-50">
-                  <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                    <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
-                    Tasks & Milestones
-                  </h4>
-                  <div className="space-y-3 mb-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <input
-                        className="input"
-                        placeholder="Task title *"
-                        value={editNewTaskTitle}
-                        onChange={(e) => setEditNewTaskTitle(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && addEditTask()}
-                      />
-                      <input
-                        className="input"
-                        placeholder="Description (optional)"
-                        value={editNewTaskDescription}
-                        onChange={(e) => setEditNewTaskDescription(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && addEditTask()}
-                      />
-                    </div>
-                    <button type="button" onClick={addEditTask} className="btn-secondary flex items-center gap-2">
-                      <Plus className="w-4 h-4" /> Add Task
-                    </button>
-                  </div>
-                  {editTasks.length > 0 && (
-                    <div className="space-y-2">
-                      <h5 className="text-sm font-medium text-gray-700">Tasks:</h5>
-                      {editTasks.map((task, idx) => (
-                        <div key={idx} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200">
-                          <input
-                            type="checkbox"
-                            checked={task.completed}
-                            onChange={() => toggleEditTaskCompletion(idx)}
-                            className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                          />
-                          <div className="flex-1">
-                            <div className={`font-medium ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
-                              {task.title}
-                            </div>
-                            {task.description && (
-                              <div className={`text-sm ${task.completed ? 'text-gray-400' : 'text-gray-600'}`}>
-                                {task.description}
-                              </div>
-                            )}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeEditTask(idx)}
-                            className="text-red-500 hover:text-red-700 p-1"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="flex gap-3">
-                  <button onClick={() => editId && saveEdit(editId)} className="btn-primary flex items-center gap-2"><Save className="w-4 h-4" /> Save Items</button>
-                  <button onClick={cancelEdit} className="btn-secondary flex items-center gap-2"><X className="w-4 h-4" /> Cancel Edit</button>
-                </div>
-              </div>
-            )}
             {/* Advance collection modal */}
             {showAdvanceModal && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -996,7 +1101,7 @@ export default function JobCardsPage() {
                     </div>
                     {advanceTarget && (
                       <div className="text-right text-sm text-gray-700">
-                        <div><span className="mr-2">Final:</span><span className="font-semibold">{formatCurrency(Number((advanceTarget as any).confirmed_amount || 0))}</span></div>
+                        <div><span className="mr-2">Final (incl. Transport):</span><span className="font-semibold">{(() => { const ca = Number((advanceTarget as any).confirmed_amount || 0); const tc = Number((advanceTarget as any).transport_charges || 0); return formatCurrency(ca + tc); })()}</span></div>
                         <div><span className="mr-2">Current Advance:</span><span className="font-semibold">{formatCurrency(Number((advanceTarget as any).advance_payment || 0))}</span></div>
                       </div>
                     )}
@@ -1024,8 +1129,9 @@ export default function JobCardsPage() {
                             <th className="py-2 pr-4">Booking</th>
                             <th className="py-2 pr-4">Title</th>
                             <th className="py-2 pr-4">Status</th>
-                            <th className="py-2 pr-4">Final Amount</th>
+                            <th className="py-2 pr-4">Final Amount (incl. Transport)</th>
                             <th className="py-2 pr-4">Advance</th>
+                            <th className="py-2 pr-4 font-semibold text-blue-700">Transport</th>
                             <th className="py-2 pr-4">Total Paid</th>
                             <th className="py-2 pr-4">Due Amount</th>
                             <th className="py-2 pr-4">Actions</th>
@@ -1033,7 +1139,7 @@ export default function JobCardsPage() {
                         </thead>
                         <tbody>
                           {rows.length === 0 ? (
-                            <tr><td className="py-4 pr-4 text-gray-500" colSpan={8}>No records.</td></tr>
+                            <tr><td className="py-4 pr-4 text-gray-500" colSpan={9}>No records.</td></tr>
                           ) : rows.map(it => (
                             <tr key={it.id}>
                               <td className="py-2 pr-4">{
@@ -1041,31 +1147,24 @@ export default function JobCardsPage() {
                                   ? `${it.booking?.customer?.name || `#${it.booking?.customer_id}`}${it.booking?.location ? ` @ ${it.booking?.location}` : ''}`
                                   : `#${it.booking_id}`
                               }</td>
-                              <td className="py-2 pr-4">{editId === it.id ? (
-                                <input className="input" value={editForm.title || it.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} />
-                              ) : it.title}</td>
-                              <td className="py-2 pr-4">{editId === it.id ? (
-                                <select className="input" value={editForm.status || it.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
-                                  <option value="open">Open</option>
-                                  <option value="in_progress">In Progress</option>
-                                  <option value="done">Done</option>
-                                </select>
-                              ) : it.status}</td>
-                              <td className="py-2 pr-4">{typeof it.confirmed_amount === 'number' ? formatCurrency(Number(it.confirmed_amount)) : (it.confirmed_amount ? String(it.confirmed_amount) : '-')}</td>
+                              <td className="py-2 pr-4">{it.title}</td>
+                              <td className="py-2 pr-4">{it.status}</td>
+                              <td className="py-2 pr-4">{(() => { const ca = Number(it.confirmed_amount || 0); const tc = Number((it as any).transport_charges || 0); return formatCurrency(ca + tc); })()}</td>
                               <td className="py-2 pr-4">{
-                                editId === it.id ? (
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    className="input"
-                                    value={(editForm.advance_payment as any) ?? (it.advance_payment ?? '')}
-                                    onChange={(e) => setEditForm({ ...editForm, advance_payment: e.target.value === '' ? null : Number(e.target.value) })}
-                                  />
-                                ) : (
-                                  typeof it.advance_payment === 'number'
-                                    ? formatCurrency(Number(it.advance_payment))
-                                    : (it.advance_payment ? String(it.advance_payment) : '-')
-                                )
+                                typeof it.advance_payment === 'number'
+                                  ? formatCurrency(Number(it.advance_payment))
+                                  : (it.advance_payment ? String(it.advance_payment) : '-')
+                              }</td>
+                              <td className="py-2 pr-4">{
+                                <div className={`flex items-center gap-1 font-semibold ${it.transport_charges ? ((it as any).transport_paid ? 'text-green-600 bg-green-50 px-2 py-1 rounded' : 'text-blue-600 bg-blue-50 px-2 py-1 rounded') : 'text-gray-500'}`}>
+                                  <DollarSign className="w-3 h-3" />
+                                  <span>{it.transport_charges ? formatCurrency(parseFloat(String(it.transport_charges))) : '-'}</span>
+                                  {it.transport_charges && (
+                                    <span className={`text-xs px-1 rounded ${(it as any).transport_paid ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
+                                      {(it as any).transport_paid ? 'Paid' : 'Transport'}
+                                    </span>
+                                  )}
+                                </div>
                               }</td>
                               <td className="py-2 pr-4">{
                                 (() => {
@@ -1082,33 +1181,24 @@ export default function JobCardsPage() {
                                 })()
                               }</td>
                               <td className="py-2 pr-4">
-                                {editId === it.id ? (
-                                  <div className="flex gap-2">
-                                    <button onClick={() => saveEdit(it.id)} className="btn-primary flex items-center gap-1"><Save className="w-4 h-4" /> Save</button>
-                                    <button onClick={cancelEdit} className="btn-secondary flex items-center gap-1"><X className="w-4 h-4" /> Cancel</button>
-                                  </div>
-                                ) : (
-                                  <div className="flex gap-2">
-                                    <button onClick={() => startEdit(it)} className="btn-secondary" title="Edit">
-                                      <Edit className="w-4 h-4" />
-                                    </button>
-                                    <button onClick={() => openTaskModal(it)} className="btn-secondary" title="Tasks">
-                                      <CheckSquare className="w-4 h-4" />
-                                    </button>
-                                    <button onClick={() => openPaymentModal(it)} className="btn-secondary" title="View Payment History">
-                                      <Receipt className="w-4 h-4" />
-                                    </button>
-                                    {Number((it as any).advance_payment ?? 0) <= 0 && (
-                                      <button onClick={() => openAdvanceModal(it)} className="btn-secondary">Collect Advance</button>
-                                    )}
-                                    <button onClick={() => viewJobCardPdf(it)} className="btn-primary" title="View Job Card">
-                                      <Eye className="w-4 h-4" />
-                                    </button>
-                                    <button onClick={() => remove(it.id)} className="btn-danger" title="Delete">
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </div>
-                                )}
+                                <div className="flex gap-2">
+                                  <button onClick={() => openTaskModal(it)} className="btn-secondary" title="Tasks">
+                                    <CheckSquare className="w-4 h-4" />
+                                  </button>
+                                  <button onClick={() => openPaymentModal(it)} className="btn-secondary" title="View Payment History">
+                                    <Receipt className="w-4 h-4" />
+                                  </button>
+                                  {Number((it as any).advance_payment ?? 0) <= 0 && (
+                                    <button onClick={() => openAdvanceModal(it)} className="btn-secondary">Collect Advance</button>
+                                  )}
+                                  {Number((it as any).transport_charges ?? 0) > 0 && (
+                                    (it as any).transport_paid ? (
+                                      <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium">Transport Paid</span>
+                                    ) : (
+                                      <button onClick={() => openTransportModal(it)} className="btn-secondary bg-blue-50 text-blue-700 hover:bg-blue-100">Collect Transport</button>
+                                    )
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -1128,8 +1218,9 @@ export default function JobCardsPage() {
                               <th className="py-2 pr-4">Booking</th>
                               <th className="py-2 pr-4">Title</th>
                               <th className="py-2 pr-4">Status</th>
-                              <th className="py-2 pr-4">Final Amount</th>
+                              <th className="py-2 pr-4">Final Amount (incl. Transport)</th>
                               <th className="py-2 pr-4">Advance</th>
+                              <th className="py-2 pr-4 font-semibold text-blue-700">Transport</th>
                               <th className="py-2 pr-4">Total Paid</th>
                               <th className="py-2 pr-4">Due Amount</th>
                               <th className="py-2 pr-4">Actions</th>
@@ -1137,7 +1228,7 @@ export default function JobCardsPage() {
                           </thead>
                           <tbody>
                             {progressJobs.length === 0 ? (
-                              <tr><td className="py-4 pr-4 text-gray-500" colSpan={8}>No records.</td></tr>
+                              <tr><td className="py-4 pr-4 text-gray-500" colSpan={9}>No records.</td></tr>
                             ) : progressJobs.map(it => (
                               <tr key={it.id}>
                                 <td className="py-2 pr-4">{
@@ -1145,9 +1236,7 @@ export default function JobCardsPage() {
                                     ? `${it.booking?.customer?.name || `#${it.booking?.customer_id}`}${it.booking?.location ? ` @ ${it.booking?.location}` : ''}`
                                     : `#${it.booking_id}`
                                 }</td>
-                                <td className="py-2 pr-4">{editId === it.id ? (
-                                  <input className="input" value={editForm.title || it.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} />
-                                ) : it.title}</td>
+                                <td className="py-2 pr-4">{it.title}</td>
                                 <td className="py-2 pr-4">
                                   {editingStatusId === it.id ? (
                                     <select
@@ -1169,21 +1258,22 @@ export default function JobCardsPage() {
                                     </button>
                                   )}
                                 </td>
-                                <td className="py-2 pr-4">{typeof it.confirmed_amount === 'number' ? formatCurrency(Number(it.confirmed_amount)) : (it.confirmed_amount ? String(it.confirmed_amount) : '-')}</td>
+                                <td className="py-2 pr-4">{(() => { const ca = Number(it.confirmed_amount || 0); const tc = Number((it as any).transport_charges || 0); return formatCurrency(ca + tc); })()}</td>
                                 <td className="py-2 pr-4">{
-                                  editId === it.id ? (
-                                    <input
-                                      type="number"
-                                      step="0.01"
-                                      className="input"
-                                      value={(editForm.advance_payment as any) ?? (it.advance_payment ?? '')}
-                                      onChange={(e) => setEditForm({ ...editForm, advance_payment: e.target.value === '' ? null : Number(e.target.value) })}
-                                    />
-                                  ) : (
-                                    typeof it.advance_payment === 'number'
-                                      ? formatCurrency(Number(it.advance_payment))
-                                      : (it.advance_payment ? String(it.advance_payment) : '-')
-                                  )
+                                  typeof it.advance_payment === 'number'
+                                    ? formatCurrency(Number(it.advance_payment))
+                                    : (it.advance_payment ? String(it.advance_payment) : '-')
+                                }</td>
+                                <td className="py-2 pr-4">{
+                                  <div className={`flex items-center gap-1 font-semibold ${it.transport_charges ? ((it as any).transport_paid ? 'text-green-600 bg-green-50 px-2 py-1 rounded' : 'text-blue-600 bg-blue-50 px-2 py-1 rounded') : 'text-gray-500'}`}>
+                                    <DollarSign className="w-3 h-3" />
+                                    <span>{it.transport_charges ? formatCurrency(parseFloat(String(it.transport_charges))) : '-'}</span>
+                                    {it.transport_charges && (
+                                      <span className={`text-xs px-1 rounded ${(it as any).transport_paid ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
+                                        {(it as any).transport_paid ? 'Paid' : 'Transport'}
+                                      </span>
+                                    )}
+                                  </div>
                                 }</td>
                                 <td className="py-2 pr-4">{
                                   (() => {
@@ -1200,36 +1290,29 @@ export default function JobCardsPage() {
                                   })()
                                 }</td>
                                 <td className="py-2 pr-4">
-                                  {editId === it.id ? (
-                                    <div className="flex gap-2">
-                                      <button onClick={() => saveEdit(it.id)} className="btn-primary flex items-center gap-1"><Save className="w-4 h-4" /> Save</button>
-                                      <button onClick={cancelEdit} className="btn-secondary flex items-center gap-1"><X className="w-4 h-4" /> Cancel</button>
-                                    </div>
-                                  ) : (
-                                    <div className="flex gap-2">
-                                      <button onClick={() => startEdit(it)} className="btn-secondary" title="Edit">
-                                        <Edit className="w-4 h-4" />
-                                      </button>
-                                      <button onClick={() => openTaskModal(it)} className="btn-secondary" title="Tasks">
-                                        <CheckSquare className="w-4 h-4" />
-                                      </button>
-                                      <button onClick={() => openPaymentModal(it)} className="btn-secondary" title="View Payment History">
-                                        <Receipt className="w-4 h-4" />
-                                      </button>
-                                      <button onClick={() => openExpensesModal(it)} className="btn-secondary" title="View Expenses">
-                                        <DollarSign className="w-4 h-4" />
-                                      </button>
-                                      <button onClick={() => openInvoiceModal(it)} className="btn-secondary" title="Invoice">
-                                        <FileText className="w-4 h-4" />
-                                      </button>
-                                      <button onClick={() => viewJobCardPdf(it)} className="btn-primary" title="View Job Card">
-                                        <Eye className="w-4 h-4" />
-                                      </button>
-                                      <button onClick={() => remove(it.id)} className="btn-danger" title="Delete">
-                                        <Trash2 className="w-4 h-4" />
-                                      </button>
-                                    </div>
-                                  )}
+                                  <div className="flex gap-2">
+                                    <button onClick={() => openTaskModal(it)} className="btn-secondary" title="Tasks">
+                                      <CheckSquare className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={() => openPaymentModal(it)} className="btn-secondary" title="View Payment History">
+                                      <Receipt className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={() => openExpensesModal(it)} className="btn-secondary" title="View Expenses">
+                                      <DollarSign className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={() => openInvoiceModal(it)} className="btn-secondary" title="Invoice">
+                                      <FileText className="w-4 h-4" />
+                                    </button>
+                                    {Number((it as any).transport_charges ?? 0) > 0 && (
+                                      (it as any).transport_paid ? (
+                                        <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium" title="Transport Paid">✓ Transport</span>
+                                      ) : (
+                                        <button onClick={() => openTransportModal(it)} className="btn-secondary bg-blue-50 text-blue-700 hover:bg-blue-100" title="Collect Transport">
+                                          <Truck className="w-4 h-4" />
+                                        </button>
+                                      )
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -1254,6 +1337,22 @@ export default function JobCardsPage() {
                   <h3 className="text-xl font-bold text-gray-900 mb-4">Create Invoice</h3>
                   {invoiceError && <div className="mb-3 bg-red-50 border-2 border-red-200 text-red-800 px-4 py-2 rounded-xl">{invoiceError}</div>}
                   <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Invoice Template <span className="text-red-500">*</span></label>
+                      <select
+                        className="input"
+                        value={selectedTemplateId || ''}
+                        onChange={e => setSelectedTemplateId(e.target.value ? Number(e.target.value) : null)}
+                      >
+                        <option value="">Select a template... ({invoiceTemplates.length} available)</option>
+                        {invoiceTemplates.map(template => (
+                          <option key={template.id} value={template.id}>
+                            {template.name}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">Choose an invoice template for PDF generation</p>
+                    </div>
                     <div>
                       <label className="block text-sm text-gray-600 mb-1">Collect Payment Now (Optional)</label>
                       <input
@@ -1314,7 +1413,7 @@ export default function JobCardsPage() {
                     </div>
                     {invoiceTarget && (
                       <div className="text-right text-sm text-gray-700">
-                        <div><span className="mr-2">Final:</span><span className="font-semibold">{formatCurrency(Number((invoiceTarget as any).confirmed_amount || 0))}</span></div>
+                        <div><span className="mr-2">Final (incl. Transport):</span><span className="font-semibold">{(() => { const ca = Number((invoiceTarget as any).confirmed_amount || 0); const tc = Number((invoiceTarget as any).transport_charges || 0); return formatCurrency(ca + tc); })()}</span></div>
                         <div><span className="mr-2">Total Paid:</span><span className="font-semibold">{formatCurrency(typeof (invoiceTarget as any).total_paid === 'number' ? Number((invoiceTarget as any).total_paid) : Number((invoiceTarget as any).advance_payment || 0))}</span></div>
                         <div><span className="mr-2">Current Due:</span><span className="font-semibold">{formatCurrency(invoiceDue)}</span></div>
                         <div><span className="mr-2">Remaining Due:</span><span className="font-semibold">{formatCurrency(invoiceRemaining)}</span></div>
@@ -1322,8 +1421,52 @@ export default function JobCardsPage() {
                     )}
                   </div>
                   <div className="mt-5 flex items-center justify-end gap-3">
-                    <button onClick={() => { setShowInvoiceModal(false); setInvoiceTarget(null); }} className="btn-secondary flex items-center gap-2"><X className="w-4 h-4" /> Cancel</button>
+                    <button onClick={() => { setShowInvoiceModal(false); setInvoiceTarget(null); setSelectedTemplateId(null); }} className="btn-secondary flex items-center gap-2"><X className="w-4 h-4" /> Cancel</button>
                     <button onClick={submitInvoice} className="btn-primary flex items-center gap-2"><Save className="w-4 h-4" /> Create</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Transport Collection Modal */}
+            {showTransportModal && transportTarget && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+                  <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <Truck className="w-5 h-5 text-blue-600" />
+                    Collect Transport Payment
+                  </h3>
+                  {transportError && <div className="mb-3 bg-red-50 border-2 border-red-200 text-red-800 px-4 py-2 rounded-xl">{transportError}</div>}
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Transport Amount</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="input"
+                        placeholder="0.00"
+                        value={transportAmount}
+                        onChange={e => setTransportAmount(e.target.value)}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Transport charges for this job card</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Payment Method</label>
+                      <input className="input" placeholder="cash / card / bank" value={transportMethod} onChange={e => setTransportMethod(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Reference (optional)</label>
+                      <input className="input" placeholder="#ref" value={transportReference} onChange={e => setTransportReference(e.target.value)} />
+                    </div>
+                    {transportTarget && (
+                      <div className="text-right text-sm text-gray-700 bg-blue-50 p-3 rounded-lg">
+                        <div><span className="mr-2">Job Card:</span><span className="font-semibold">{transportTarget.title}</span></div>
+                        <div><span className="mr-2">Transport Charges:</span><span className="font-semibold text-blue-700">{formatCurrency(Number((transportTarget as any).transport_charges || 0))}</span></div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-5 flex items-center justify-end gap-3">
+                    <button onClick={() => { setShowTransportModal(false); setTransportTarget(null); }} className="btn-secondary flex items-center gap-2"><X className="w-4 h-4" /> Cancel</button>
+                    <button onClick={submitTransport} className="btn-primary flex items-center gap-2"><Save className="w-4 h-4" /> Collect Payment</button>
                   </div>
                 </div>
               </div>
@@ -1378,12 +1521,20 @@ export default function JobCardsPage() {
 
                   {/* Tasks List */}
                   <div className="space-y-3">
-                    <h4 className="font-semibold text-gray-900">Tasks</h4>
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold text-gray-900">Tasks</h4>
+                      <button
+                        onClick={openAddTaskForm}
+                        className="btn-primary flex items-center gap-2 text-sm"
+                      >
+                        <Plus className="w-4 h-4" /> Add Task
+                      </button>
+                    </div>
                     {(taskModalTarget.tasks || []).length === 0 ? (
                       <div className="text-center py-8 text-gray-500">
                         <div className="text-4xl mb-2">📝</div>
                         <div>No tasks added yet</div>
-                        <div className="text-sm">Add tasks when creating or editing the job card</div>
+                        <div className="text-sm">Click "Add Task" to create your first task</div>
                       </div>
                     ) : (
                       <div className="space-y-2">
@@ -1393,49 +1544,6 @@ export default function JobCardsPage() {
                               : 'bg-white border-gray-200 hover:border-purple-300'
                             }`}>
                             <div className="flex items-start gap-3">
-                              <input
-                                type="checkbox"
-                                checked={task.completed}
-                                disabled={updatingTaskId === task.id}
-                                onChange={async () => {
-                                  if (!task.id) return;
-                                  setUpdatingTaskId(task.id);
-                                  try {
-                                    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${taskModalTarget.id}/tasks/${task.id}/toggle`, {
-                                      method: 'PATCH',
-                                      headers: {
-                                        'Content-Type': 'application/json',
-                                        Accept: 'application/json',
-                                        Authorization: `Bearer ${token}`
-                                      }
-                                    });
-                                    if (response.ok) {
-                                      const updatedTask = await response.json();
-                                      // Update local state
-                                      const updatedTasks = [...(taskModalTarget.tasks || [])];
-                                      const taskIndex = updatedTasks.findIndex(t => t.id === task.id);
-                                      if (taskIndex !== -1) {
-                                        updatedTasks[taskIndex] = updatedTask;
-                                        setTaskModalTarget({ ...taskModalTarget, tasks: updatedTasks });
-                                      }
-                                      // Refresh the job cards list to reflect changes
-                                      if (token) fetchList(token, page?.current_page || 1);
-                                    } else {
-                                      console.error('Failed to toggle task:', response.statusText);
-                                      // Show error message
-                                      setError('Failed to update task status');
-                                      setTimeout(() => setError(null), 3000);
-                                    }
-                                  } catch (error) {
-                                    console.error('Failed to toggle task:', error);
-                                    setError('Failed to update task status');
-                                    setTimeout(() => setError(null), 3000);
-                                  } finally {
-                                    setUpdatingTaskId(null);
-                                  }
-                                }}
-                                className="w-5 h-5 mt-0.5 text-purple-600 rounded focus:ring-purple-500 disabled:opacity-50"
-                              />
                               <div className="flex-1">
                                 <div className={`font-medium text-lg ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
                                   {task.title}
@@ -1450,6 +1558,75 @@ export default function JobCardsPage() {
                                     ✅ Completed {new Date(task.completed_at).toLocaleDateString()}
                                   </div>
                                 )}
+                                {!task.completed && (
+                                  <div className="text-xs text-orange-600 mt-2 flex items-center gap-1">
+                                    ⏳ Pending
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={async () => {
+                                    if (!task.id) return;
+                                    setUpdatingTaskId(task.id);
+                                    try {
+                                      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${taskModalTarget.id}/tasks/${task.id}/toggle`, {
+                                        method: 'PATCH',
+                                        headers: {
+                                          'Content-Type': 'application/json',
+                                          Accept: 'application/json',
+                                          Authorization: `Bearer ${token}`
+                                        }
+                                      });
+                                      if (response.ok) {
+                                        const updatedTask = await response.json();
+                                        // Update local state
+                                        const updatedTasks = [...(taskModalTarget.tasks || [])];
+                                        const taskIndex = updatedTasks.findIndex(t => t.id === task.id);
+                                        if (taskIndex !== -1) {
+                                          updatedTasks[taskIndex] = updatedTask;
+                                          setTaskModalTarget({ ...taskModalTarget, tasks: updatedTasks });
+                                        }
+                                        // Refresh the job cards list to reflect changes
+                                        if (token) fetchList(token, page?.current_page || 1);
+                                      } else {
+                                        console.error('Failed to toggle task:', response.statusText);
+                                        // Show error message
+                                        setError('Failed to update task status');
+                                        setTimeout(() => setError(null), 3000);
+                                      }
+                                    } catch (error) {
+                                      console.error('Failed to toggle task:', error);
+                                      setError('Failed to update task status');
+                                      setTimeout(() => setError(null), 3000);
+                                    } finally {
+                                      setUpdatingTaskId(null);
+                                    }
+                                  }}
+                                  disabled={updatingTaskId === task.id}
+                                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                                    task.completed
+                                      ? 'bg-orange-100 text-orange-800 hover:bg-orange-200'
+                                      : 'bg-green-100 text-green-800 hover:bg-green-200'
+                                  } disabled:opacity-50`}
+                                  title={task.completed ? 'Mark as pending' : 'Mark as complete'}
+                                >
+                                  {updatingTaskId === task.id ? '...' : (task.completed ? 'Mark Pending' : 'Mark Complete')}
+                                </button>
+                                <button
+                                  onClick={() => openEditTaskForm(task)}
+                                  className="text-blue-600 hover:text-blue-800 p-1"
+                                  title="Edit task"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => deleteTask(task)}
+                                  className="text-red-600 hover:text-red-800 p-1"
+                                  title="Delete task"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -1464,6 +1641,199 @@ export default function JobCardsPage() {
                       className="btn-secondary flex items-center gap-2"
                     >
                       <X className="w-4 h-4" /> Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Task Form Modal */}
+            {showTaskForm && taskModalTarget && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      {editingTask ? <Edit className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                      {editingTask ? 'Edit Task' : 'Add New Task'}
+                    </h3>
+                    <button
+                      onClick={closeTaskForm}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
+
+                  {taskFormError && (
+                    <div className="mb-4 bg-red-50 border-2 border-red-200 text-red-800 px-4 py-2 rounded-xl">
+                      {taskFormError}
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Task Title <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="Enter task title"
+                        value={taskFormTitle}
+                        onChange={(e) => setTaskFormTitle(e.target.value)}
+                        maxLength={255}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Description (Optional)
+                      </label>
+                      <textarea
+                        className="input"
+                        placeholder="Enter task description"
+                        value={taskFormDescription}
+                        onChange={(e) => setTaskFormDescription(e.target.value)}
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex items-center justify-end gap-3">
+                    <button onClick={closeTaskForm} className="btn-secondary flex items-center gap-2">
+                      <X className="w-4 h-4" /> Cancel
+                    </button>
+                    <button onClick={saveTask} className="btn-primary flex items-center gap-2">
+                      <Save className="w-4 h-4" /> {editingTask ? 'Update' : 'Add'} Task
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Expense Form Modal */}
+            {showExpenseForm && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      {editingExpense ? <Edit className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                      {editingExpense ? 'Edit Expense' : 'Add New Expense'}
+                    </h3>
+                    <button
+                      onClick={closeExpenseForm}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
+
+                  {expenseFormError && (
+                    <div className="mb-4 bg-red-50 border-2 border-red-200 text-red-800 px-4 py-2 rounded-xl">
+                      {expenseFormError}
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Event Type <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        className="input"
+                        value={expenseFormEventType}
+                        onChange={(e) => setExpenseFormEventType(e.target.value)}
+                      >
+                        <option value="">Select event type</option>
+                        <option value="Photography">Photography</option>
+                        <option value="Videography">Videography</option>
+                        <option value="Editing">Editing</option>
+                        <option value="Travel">Travel</option>
+                        <option value="Equipment">Equipment</option>
+                        <option value="Venue">Venue</option>
+                        <option value="Catering">Catering</option>
+                        <option value="Decorations">Decorations</option>
+                        <option value="Transportation">Transportation</option>
+                        <option value="Accommodation">Accommodation</option>
+                        <option value="Miscellaneous">Miscellaneous</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Amount <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="input"
+                        placeholder="0.00"
+                        value={expenseFormAmount}
+                        onChange={(e) => setExpenseFormAmount(e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Description <span className="text-red-500">*</span>
+                      </label>
+                      <textarea
+                        className="input"
+                        placeholder="Describe the expense"
+                        value={expenseFormDescription}
+                        onChange={(e) => setExpenseFormDescription(e.target.value)}
+                        rows={3}
+                        maxLength={1000}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Vendor (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="Vendor name"
+                        value={expenseFormVendor}
+                        onChange={(e) => setExpenseFormVendor(e.target.value)}
+                        maxLength={255}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Expense Date <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        className="input"
+                        value={expenseFormDate}
+                        onChange={(e) => setExpenseFormDate(e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Receipt (Optional)
+                      </label>
+                      <input
+                        type="file"
+                        accept="image/*,.pdf"
+                        className="input"
+                        onChange={(e) => setExpenseFormReceipt(e.target.files?.[0] || null)}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Accepted formats: JPG, PNG, PDF (max 5MB)
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex items-center justify-end gap-3">
+                    <button onClick={closeExpenseForm} className="btn-secondary flex items-center gap-2" disabled={expenseFormLoading}>
+                      <X className="w-4 h-4" /> Cancel
+                    </button>
+                    <button onClick={saveExpense} className="btn-primary flex items-center gap-2" disabled={expenseFormLoading}>
+                      <Save className="w-4 h-4" /> {expenseFormLoading ? 'Saving...' : (editingExpense ? 'Update' : 'Add')} Expense
                     </button>
                   </div>
                 </div>
@@ -1564,10 +1934,25 @@ export default function JobCardsPage() {
                     />
                   </div>
 
+                  {/* Add Expense Button */}
+                  <div className="mb-4 flex justify-end">
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openAddExpenseForm();
+                      }}
+                      className="btn-primary flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" /> Add Expense
+                    </button>
+                  </div>
+
                   {expenses.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
                       <DollarSign className="w-12 h-12 mx-auto mb-4 text-gray-300" />
                       <div>No expenses recorded for this job card</div>
+                      <div className="text-sm">Click "Add Expense" to record your first expense</div>
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
@@ -1580,6 +1965,7 @@ export default function JobCardsPage() {
                             <th className="py-2 pr-4">Vendor</th>
                             <th className="py-2 pr-4">Date</th>
                             <th className="py-2 pr-4">Receipt</th>
+                            <th className="py-2 pr-4">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1603,6 +1989,24 @@ export default function JobCardsPage() {
                                 ) : (
                                   '-'
                                 )}
+                              </td>
+                              <td className="py-2 pr-4">
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => openEditExpenseForm(expense)}
+                                    className="text-blue-600 hover:text-blue-800 p-1"
+                                    title="Edit expense"
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => deleteExpense(expense)}
+                                    className="text-red-600 hover:text-red-800 p-1"
+                                    title="Delete expense"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           ))}

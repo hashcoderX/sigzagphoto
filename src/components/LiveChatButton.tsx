@@ -36,6 +36,7 @@ export default function LiveChatButton() {
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
         aria-label="Open Live Chat"
+        suppressHydrationWarning
       >
         <MessageCircle className="w-6 h-6" />
       </motion.button>

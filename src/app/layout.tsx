@@ -85,6 +85,7 @@ export default function RootLayout({
       <body
         className={`${poppins.variable} ${inter.variable} antialiased`}
         style={{ fontFamily: 'var(--font-poppins)' }}
+        suppressHydrationWarning
       >
         <script
           type="application/ld+json"
