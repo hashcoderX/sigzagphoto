@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { motion } from "framer-motion";
 import { Plus, Trash2, Save, X, Receipt, CheckSquare, FileText, DollarSign, Truck, Edit } from "lucide-react";
 import AdminSectionHeader from "@/components/AdminSectionHeader";
+import InvoiceTemplatePreview from "@/components/InvoiceTemplatePreview";
 import { hasBusinessAccess, isBusinessOrPhotographer, isFreeExpired } from "@/lib/access";
 
 interface Booking { id: number; customer_id: number; location?: string | null; earliest_date?: string; customer?: { id: number; name: string }; }
@@ -117,7 +118,7 @@ export default function JobCardsPage() {
   const [page, setPage] = useState<Page<JobCard> | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState<Partial<JobCard>>({ status: 'open' });
+  const [form, setForm] = useState<Partial<JobCard>>({ status: 'open', discount: 0 });
   // Items & currency state
   const [items, setItems] = useState<LineItem[]>([]);
   const [lineService, setLineService] = useState<string>('');
@@ -125,7 +126,7 @@ export default function JobCardsPage() {
   const [lineAmount, setLineAmount] = useState<string>('');
   const [lineError, setLineError] = useState<string | null>(null);
   const [userCurrency, setUserCurrency] = useState<string>('USD');
-  const [discount, setDiscount] = useState<string>('');
+  const [user, setUser] = useState<any>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   // Advance collection modal state
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
@@ -141,6 +142,7 @@ export default function JobCardsPage() {
   const [transportMethod, setTransportMethod] = useState<string>('cash');
   const [transportReference, setTransportReference] = useState<string>('');
   const [transportError, setTransportError] = useState<string | null>(null);
+  const [transportTemplateId, setTransportTemplateId] = useState<number | null>(null);
   // Invoice modal state for In Progress
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceTarget, setInvoiceTarget] = useState<JobCard | null>(null);
@@ -155,6 +157,8 @@ export default function JobCardsPage() {
   // Invoice Templates state
   const [invoiceTemplates, setInvoiceTemplates] = useState<any[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
+  const [selectedTemplateData, setSelectedTemplateData] = useState<any>(null);
+  const [showTemplatePreview, setShowTemplatePreview] = useState(false);
   // Task tracking state
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -239,7 +243,15 @@ export default function JobCardsPage() {
     catch (e: any) { setError(e?.message || 'Failed to load job cards'); } finally { setLoading(false); }
   };
   const fetchProfile = async (t: string) => {
-    try { const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/me`, { headers: { Accept: 'application/json', Authorization: `Bearer ${t}` } }); if (!res.ok) return; const data = await res.json(); if (data?.currency) setUserCurrency(data.currency); } catch { }
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/me`, {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${t}` }
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setUser(data);
+      if (data?.currency) setUserCurrency(data.currency);
+    } catch { }
   };
 
   const formatCurrency = (value: number): string => {
@@ -249,7 +261,7 @@ export default function JobCardsPage() {
 
   // Derived totals
   const itemsSubtotal = items.reduce((s, it) => s + it.subamount, 0);
-  const discountNum = (() => { const n = Number(discount); return Number.isFinite(n) && n > 0 ? +n.toFixed(2) : 0; })();
+  const discountNum = (() => { const n = Number(form.discount); return Number.isFinite(n) && n > 0 ? +n.toFixed(2) : 0; })();
   const transportChargesNum = (() => { const n = Number(form.transport_charges); return Number.isFinite(n) && n > 0 ? +n.toFixed(2) : 0; })();
   const finalAmount = Math.max(0, +(itemsSubtotal - discountNum + transportChargesNum).toFixed(2));
 
@@ -275,7 +287,7 @@ export default function JobCardsPage() {
     try {
       const payload: any = {
         ...form,
-        discount: (discount && Number(discount) >= 0) ? Number(discount) : undefined,
+        discount: form.discount,
         items: items.map(it => ({ service: it.service, qty: it.qty, amount: it.amount, subamount: it.subamount })),
         tasks: tasks.map(task => ({
           title: task.title,
@@ -288,8 +300,8 @@ export default function JobCardsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || 'Create failed');
       setCreating(false);
-      setForm({ status: 'open' });
-      setItems([]); setLineService(''); setLineQty(''); setLineAmount(''); setDiscount('');
+      setForm({ status: 'open', discount: 0 });
+      setItems([]); setLineService(''); setLineQty(''); setLineAmount(''); setForm({ ...form, discount: 0 });
       setTasks([]); setNewTaskTitle(''); setNewTaskDescription('');
       fetchList(token, 1);
       setSuccessMessage('Job card created successfully.');
@@ -688,28 +700,16 @@ export default function JobCardsPage() {
       if (!res.ok) throw new Error(data?.message || 'Failed to record payment');
       setSuccessMessage('Advance payment recorded.');
       if (token) fetchList(token, page?.current_page || 1);
-      // Download payment receipt PDF
-      try {
-        const pdfRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/payments/${data.id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
-        if (pdfRes.ok) {
-          const blob = await pdfRes.blob();
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url; a.download = `payment-${data.id}.pdf`;
-          document.body.appendChild(a); a.click(); a.remove();
-          URL.revokeObjectURL(url);
-        }
-      } catch { }
     } catch (e: any) { setError(e?.message || 'Failed to record payment'); }
   };
 
   const openAdvanceModal = (it: JobCard) => {
-    // Only allow if current advance is zero
+    // Only allow if current advance is zero and no advance already collected
     const adv = Number((it as any).advance_payment ?? 0);
     if (adv > 0) return; // hidden in UI, but double guard
     setAdvanceTarget(it);
-    const c = Number((it as any).confirmed_amount ?? 0);
-    const due = Math.max(0, c - adv);
+    // Use computed due (includes transport and any paid amounts if available)
+    const due = computeRowDue(it);
     setAdvanceAmount(due > 0 ? due.toFixed(2) : '0.00');
     setAdvanceMethod('cash');
     setAdvanceReference('');
@@ -736,6 +736,7 @@ export default function JobCardsPage() {
           reference: advanceReference || undefined,
           status: 'paid',
           paid_at: new Date().toISOString(),
+          payment_type: 'advance',
         })
       });
       const data = await res.json();
@@ -769,6 +770,49 @@ export default function JobCardsPage() {
     setInvoiceReference('');
     setInvoiceError(null);
     setShowInvoiceModal(true);
+
+    // Fetch payments for the job card
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${it.id}/payments`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }
+    }).then(res => res.ok ? res.json() : []).then(async (paymentsData) => {
+      setPayments(paymentsData || []);
+      // Fetch booking and customer details
+      let bookingData = null;
+      let customerData = null;
+      try {
+        const bookingRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/bookings/${it.booking_id}`, {
+          headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }
+        });
+        if (bookingRes.ok) {
+          bookingData = await bookingRes.json();
+          if (bookingData.customer_id) {
+            const customerRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/customers/${bookingData.customer_id}`, {
+              headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }
+            });
+            if (customerRes.ok) {
+              customerData = await customerRes.json();
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to fetch booking/customer data:', error);
+      }
+      // Construct invoiceData for preview
+      if (it) {
+        const items = it.items?.map(item => ({
+          description: item.service,
+          quantity: item.qty,
+          unit_price: item.amount,
+          total: item.qty * item.amount
+        })) || [];
+        const subtotal = items.reduce((sum, item) => sum + item.total, 0);
+        const discount = Number(it.discount || 0);
+        const transport = Number(it.transport_charges || 0);
+        const total = subtotal + transport - discount;
+        const paidAmount = (paymentsData || []).reduce((sum: number, payment: any) => sum + Number(payment.amount || 0), 0);
+        const outstandingAmount = Math.max(0, total - paidAmount);
+      }
+    }).catch(() => setPayments([]));
   };
 
   const submitInvoice = async () => {
@@ -782,46 +826,45 @@ export default function JobCardsPage() {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${invoiceTarget.id}/invoice`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ collect_amount: collect, currency: userCurrency, method: invoiceMethod || 'cash', reference: invoiceReference || undefined })
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ 
+          collect_amount: collect, 
+          currency: userCurrency, 
+          method: invoiceMethod || 'cash', 
+          reference: invoiceReference || undefined,
+          template_id: selectedTemplateId
+        })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || 'Failed to create invoice');
-
-      // Generate PDF using selected template
-      try {
-        const pdfRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/invoice-templates/${selectedTemplateId}/pdf?invoice_id=${data.id}`, {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${token}` }
-        });
-
-        if (pdfRes.ok) {
-          // Create a blob from the PDF response and trigger download
-          const pdfBlob = await pdfRes.blob();
-          const pdfUrl = URL.createObjectURL(pdfBlob);
-          const link = document.createElement('a');
-          link.href = pdfUrl;
-          link.download = `invoice-${data.number || data.id}.pdf`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(pdfUrl);
-        } else {
-          console.warn('Failed to generate PDF, but invoice was created successfully');
-        }
-      } catch (pdfError) {
-        console.warn('PDF generation failed, but invoice was created successfully:', pdfError);
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(errorText || 'Failed to create invoice');
       }
 
+      // Handle PDF download
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invoice_${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
       // Compute remaining due using API response if available
-      const newDue = typeof data?.due_amount === 'number' ? Number(data.due_amount) : Math.max(0, invoiceDue - (Number(invoiceCollect) || 0));
+      // Since we're getting a PDF response, we can't get JSON data back
+      // We'll need to refresh the data or estimate the new due
+      const newDue = Math.max(0, invoiceDue - collect);
       if (invoiceTarget) {
         setTempDue(prev => ({ ...prev, [invoiceTarget.id]: newDue }));
       }
       setShowInvoiceModal(false);
       setInvoiceTarget(null);
       setSelectedTemplateId(null);
-      setSuccessMessage(`Invoice created. Remaining due: ${formatCurrency(newDue)}`);
+      setShowTemplatePreview(false);
+      setSelectedTemplateData(null);
+      setSuccessMessage(`Invoice created and PDF downloaded. Remaining due: ${formatCurrency(newDue)}`);
       // Optional refetch to sync other fields; UI due is already updated instantly
       if (token) fetchList(token, page?.current_page || 1);
     } catch (e: any) {
@@ -857,6 +900,8 @@ export default function JobCardsPage() {
     setTransportMethod('cash');
     setTransportReference('');
     setTransportError(null);
+    // Default transport invoice template to selected one or first available
+    setTransportTemplateId(selectedTemplateId || (invoiceTemplates[0]?.id ?? null));
     setShowTransportModal(true);
   };
 
@@ -865,31 +910,39 @@ export default function JobCardsPage() {
     setTransportError(null);
     const amount = Number(transportAmount);
     if (!Number.isFinite(amount) || amount <= 0) { setTransportError('Amount must be a positive number'); return; }
+    if (!transportTemplateId) { setTransportError('Please select an invoice template'); return; }
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/payments`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${transportTarget.id}/transport-invoice`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/pdf', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          customer_id: (transportTarget as any).booking?.customer?.id || (transportTarget as any).booking?.customer_id || 0,
-          booking_id: (transportTarget as any).booking?.id || transportTarget.booking_id,
-          job_card_id: transportTarget.id,
           amount,
           currency: userCurrency,
           method: transportMethod || 'cash',
           reference: transportReference || undefined,
-          status: 'paid',
-          paid_at: new Date().toISOString(),
-          payment_type: 'transport',
+          template_id: transportTemplateId,
         })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || 'Failed to record transport payment');
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || 'Failed to create transport invoice');
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `transport_invoice_${transportTarget.id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
       setShowTransportModal(false);
       setTransportTarget(null);
-      setSuccessMessage('Transport payment recorded.');
+      setSuccessMessage('Transport payment recorded and invoice downloaded.');
       if (token) fetchList(token, page?.current_page || 1);
     } catch (e: any) {
-      setTransportError(e?.message || 'Failed to record transport payment');
+      setTransportError(e?.message || 'Failed to create transport invoice');
     }
   };
 
@@ -903,13 +956,15 @@ export default function JobCardsPage() {
               title="Job Cards"
               subtitle="Create, track and invoice production work"
             >
-              <button
-                onClick={() => setCreating(true)}
-                className="newBtn flex items-center gap-2"
-                aria-label="Create new job card"
-              >
-                <Plus className="w-4 h-4" aria-hidden="true" /> New Job Card
-              </button>
+              {process.env.NEXT_PUBLIC_SHOW_NEW_JOB_CARD === '1' && (
+                <button
+                  onClick={() => setCreating(true)}
+                  className="newBtn flex items-center gap-2"
+                  aria-label="Create new job card"
+                >
+                  <Plus className="w-4 h-4" aria-hidden="true" /> New Job Card
+                </button>
+              )}
             </AdminSectionHeader>
             {error && <div className="mb-4 bg-red-50 border-2 border-red-200 text-red-800 px-6 py-3 rounded-xl">{error}</div>}
             {creating && (
@@ -982,7 +1037,7 @@ export default function JobCardsPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <label className="text-sm text-gray-600">Discount:</label>
-                          <input type="number" step="0.01" className="input w-40" placeholder="0.00" value={discount} onChange={(e) => setDiscount(e.target.value)} />
+                          <input type="number" step="0.01" className="input w-40" placeholder="0.00" value={form.discount || 0} onChange={(e) => setForm({ ...form, discount: Number(e.target.value) || 0 })} />
                         </div>
                         <div className="flex items-center gap-2">
                           <label className="text-sm text-gray-600">Transport Charges:</label>
@@ -1148,7 +1203,27 @@ export default function JobCardsPage() {
                                   : `#${it.booking_id}`
                               }</td>
                               <td className="py-2 pr-4">{it.title}</td>
-                              <td className="py-2 pr-4">{it.status}</td>
+                              <td className="py-2 pr-4">
+                                {editingStatusId === it.id ? (
+                                  <select
+                                    className="input bg-white text-gray-900"
+                                    value={it.status}
+                                    onChange={(e) => updateStatus(it.id, e.target.value)}
+                                    onBlur={() => setEditingStatusId(null)}
+                                  >
+                                    <option value="open">Open</option>
+                                    <option value="in_progress">In Progress</option>
+                                    <option value="done">Done</option>
+                                  </select>
+                                ) : (
+                                  <button
+                                    onClick={() => setEditingStatusId(it.id)}
+                                    className="btn-secondary text-xs"
+                                  >
+                                    {it.status}
+                                  </button>
+                                )}
+                              </td>
                               <td className="py-2 pr-4">{(() => { const ca = Number(it.confirmed_amount || 0); const tc = Number((it as any).transport_charges || 0); return formatCurrency(ca + tc); })()}</td>
                               <td className="py-2 pr-4">{
                                 typeof it.advance_payment === 'number'
@@ -1188,9 +1263,20 @@ export default function JobCardsPage() {
                                   <button onClick={() => openPaymentModal(it)} className="btn-secondary" title="View Payment History">
                                     <Receipt className="w-4 h-4" />
                                   </button>
-                                  {Number((it as any).advance_payment ?? 0) <= 0 && (
-                                    <button onClick={() => openAdvanceModal(it)} className="btn-secondary">Collect Advance</button>
-                                  )}
+                                  <button onClick={() => openExpensesModal(it)} className="btn-secondary" title="View Expenses">
+                                    <DollarSign className="w-4 h-4" />
+                                  </button>
+                                  <button onClick={() => openInvoiceModal(it)} className="btn-secondary" title="Invoice">
+                                    <FileText className="w-4 h-4" />
+                                  </button>
+                                  {(() => {
+                                    const adv = Number((it as any).advance_payment ?? 0);
+                                    const totalPaid = typeof (it as any).total_paid === 'number' ? Number((it as any).total_paid) : 0;
+                                    const showCollectAdvance = adv <= 0 && totalPaid <= 0;
+                                    return showCollectAdvance ? (
+                                      <button onClick={() => openAdvanceModal(it)} className="btn-secondary">Collect Advance</button>
+                                    ) : null;
+                                  })()}
                                   {Number((it as any).transport_charges ?? 0) > 0 && (
                                     (it as any).transport_paid ? (
                                       <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium">Transport Paid</span>
@@ -1240,7 +1326,7 @@ export default function JobCardsPage() {
                                 <td className="py-2 pr-4">
                                   {editingStatusId === it.id ? (
                                     <select
-                                      className="input"
+                                      className="input bg-white text-gray-900"
                                       value={it.status}
                                       onChange={(e) => updateStatus(it.id, e.target.value)}
                                       onBlur={() => setEditingStatusId(null)}
@@ -1333,25 +1419,57 @@ export default function JobCardsPage() {
             {/* Invoice modal */}
             {showInvoiceModal && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl p-6">
                   <h3 className="text-xl font-bold text-gray-900 mb-4">Create Invoice</h3>
                   {invoiceError && <div className="mb-3 bg-red-50 border-2 border-red-200 text-red-800 px-4 py-2 rounded-xl">{invoiceError}</div>}
                   <div className="space-y-3">
                     <div>
                       <label className="block text-sm text-gray-600 mb-1">Invoice Template <span className="text-red-500">*</span></label>
-                      <select
-                        className="input"
-                        value={selectedTemplateId || ''}
-                        onChange={e => setSelectedTemplateId(e.target.value ? Number(e.target.value) : null)}
-                      >
-                        <option value="">Select a template... ({invoiceTemplates.length} available)</option>
-                        {invoiceTemplates.map(template => (
-                          <option key={template.id} value={template.id}>
-                            {template.name}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-xs text-gray-500 mt-1">Choose an invoice template for PDF generation</p>
+                      <div className="flex gap-2">
+                        <select
+                          className="input flex-1"
+                          value={selectedTemplateId || ''}
+                          onChange={e => {
+                            const id = e.target.value ? Number(e.target.value) : null;
+                            setSelectedTemplateId(id);
+                            setShowTemplatePreview(false); // Hide preview when template changes
+                            setSelectedTemplateData(null);
+                          }}
+                        >
+                          <option value="">Select a template... ({invoiceTemplates.length} available)</option>
+                          {invoiceTemplates.map(template => (
+                            <option key={template.id} value={template.id}>
+                              {template.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!selectedTemplateId || !token) return;
+                            try {
+                              const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/invoice-templates/${selectedTemplateId}`, {
+                                headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }
+                              });
+                              if (res.ok) {
+                                const templateData = await res.json();
+                                setSelectedTemplateData(templateData);
+                                setShowTemplatePreview(true);
+                              } else {
+                                console.error('Failed to load template');
+                              }
+                            } catch (error) {
+                              console.error('Error loading template:', error);
+                            }
+                          }}
+                          className="btn-secondary px-4 py-2"
+                          disabled={!selectedTemplateId}
+                          title="Preview selected template"
+                        >
+                          Preview
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">Choose an invoice template for invoice creation</p>
                     </div>
                     <div>
                       <label className="block text-sm text-gray-600 mb-1">Collect Payment Now (Optional)</label>
@@ -1420,8 +1538,37 @@ export default function JobCardsPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* Template Preview */}
+                  {showTemplatePreview && selectedTemplateData && (
+                    <div className="mt-6 border-t pt-4">
+                      <h4 className="text-lg font-semibold text-gray-900 mb-3">Template Preview</h4>
+                      <div className="border rounded-lg p-4 bg-gray-50 max-h-96 overflow-auto">
+                        <InvoiceTemplatePreview
+                          templateData={{
+                            layout: {
+                              width: selectedTemplateData.page_width || 595,
+                              height: selectedTemplateData.page_height || 842,
+                              unit: 'px',
+                              margin: selectedTemplateData.margins || { top: 10, right: 10, bottom: 10, left: 10 }
+                            },
+                            components: selectedTemplateData.elements || []
+                          }}
+                          zoom={0.5}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowTemplatePreview(false)}
+                        className="mt-2 text-sm text-gray-600 hover:text-gray-800"
+                      >
+                        Hide Preview
+                      </button>
+                    </div>
+                  )}
+
                   <div className="mt-5 flex items-center justify-end gap-3">
-                    <button onClick={() => { setShowInvoiceModal(false); setInvoiceTarget(null); setSelectedTemplateId(null); }} className="btn-secondary flex items-center gap-2"><X className="w-4 h-4" /> Cancel</button>
+                    <button onClick={() => { setShowInvoiceModal(false); setInvoiceTarget(null); setSelectedTemplateId(null); setShowTemplatePreview(false); setSelectedTemplateData(null); }} className="btn-secondary flex items-center gap-2"><X className="w-4 h-4" /> Cancel</button>
                     <button onClick={submitInvoice} className="btn-primary flex items-center gap-2"><Save className="w-4 h-4" /> Create</button>
                   </div>
                 </div>
@@ -1448,6 +1595,19 @@ export default function JobCardsPage() {
                         onChange={e => setTransportAmount(e.target.value)}
                       />
                       <p className="text-xs text-gray-500 mt-1">Transport charges for this job card</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Invoice Template <span className="text-red-500">*</span></label>
+                      <select
+                        className="input"
+                        value={transportTemplateId || ''}
+                        onChange={e => setTransportTemplateId(e.target.value ? Number(e.target.value) : null)}
+                      >
+                        <option value="">Select a template... ({invoiceTemplates.length} available)</option>
+                        {invoiceTemplates.map(template => (
+                          <option key={template.id} value={template.id}>{template.name || `Template #${template.id}`}</option>
+                        ))}
+                      </select>
                     </div>
                     <div>
                       <label className="block text-sm text-gray-600 mb-1">Payment Method</label>
