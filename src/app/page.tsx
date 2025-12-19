@@ -99,18 +99,30 @@ export default function Home() {
 
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !email.includes('@')) {
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setSubscribeMessage('Please enter a valid email address.');
       return;
     }
     setSubscribing(true);
     setSubscribeMessage('');
-    // Simulate API call
-    setTimeout(() => {
-      setSubscribing(false);
-      setSubscribeMessage('Thank you for subscribing! Check your email for confirmation.');
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/subscribe`, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok) {
+        const msg = data?.message || 'Subscription failed. Please try again later.';
+        throw new Error(msg);
+      }
+      setSubscribeMessage('Thank you for subscribing!');
       setEmail('');
-    }, 2000);
+    } catch (err: any) {
+      setSubscribeMessage(err?.message || 'Subscription failed. Please try again later.');
+    } finally {
+      setSubscribing(false);
+    }
   };
 
   useEffect(() => {

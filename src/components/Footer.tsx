@@ -45,11 +45,11 @@ export default function Footer() {
                   Explore Gallery
                 </Link>
               </li>
-              <li>
+              {/* <li>
                 <Link href="/pricing" className="hover:text-[#6C63FF] transition-colors">
                   Pricing Plans
                 </Link>
-              </li>
+              </li> */}
               <li>
                 <Link href="/contact" className="hover:text-[#6C63FF] transition-colors">
                   Contact Us
@@ -73,12 +73,12 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="#" className="hover:text-[#6C63FF] transition-colors">
+                <Link href="/selling-guidelines" className="hover:text-[#6C63FF] transition-colors">
                   Selling Guidelines
                 </Link>
               </li>
               <li>
-                <Link href="#" className="hover:text-[#6C63FF] transition-colors">
+                <Link href="/community" className="hover:text-[#6C63FF] transition-colors">
                   Community Forum
                 </Link>
               </li>
@@ -111,13 +111,13 @@ export default function Footer() {
             © 2025 Sudharma. All rights reserved.
           </p>
           <div className="flex space-x-6 mt-4 md:mt-0">
-            <Link href="#" className="text-sm hover:text-[#6C63FF] transition-colors">
+            <Link href="/privacy" className="text-sm hover:text-[#6C63FF] transition-colors">
               Privacy Policy
             </Link>
-            <Link href="#" className="text-sm hover:text-[#6C63FF] transition-colors">
+            <Link href="/terms" className="text-sm hover:text-[#6C63FF] transition-colors">
               Terms of Service
             </Link>
-            <Link href="#" className="text-sm hover:text-[#6C63FF] transition-colors">
+            <Link href="/cookies" className="text-sm hover:text-[#6C63FF] transition-colors">
               Cookie Policy
             </Link>
           </div>

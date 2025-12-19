@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
@@ -20,6 +20,10 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [gsiLoaded, setGsiLoaded] = useState(false);
+  const gsiReadyRef = useRef(false);
+  const googleBtnRef = useRef<HTMLDivElement | null>(null);
+  const fbBtnRef = useRef<HTMLButtonElement | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,6 +89,164 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Load Google Identity Services
+  useEffect(() => {
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.async = true;
+    s.defer = true;
+    s.onload = () => setGsiLoaded(true);
+    document.head.appendChild(s);
+    return () => { try { document.head.removeChild(s); } catch {} };
+  }, []);
+
+  // Initialize GIS and render official button
+  useEffect(() => {
+    if (!gsiLoaded) return;
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      setError('Google client ID not configured');
+      return;
+    }
+    const google: any = (window as any).google;
+    if (!google || !google.accounts || !google.accounts.id) return;
+    if (!gsiReadyRef.current) {
+      google.accounts.id.initialize({
+        client_id: clientId,
+        callback: async (response: any) => {
+          const id_token = response?.credential;
+          if (!id_token) return;
+          try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/oauth/google`, {
+              method: 'POST',
+              headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id_token }),
+            });
+            const data = await res.json().catch(() => ({} as any));
+            if (!res.ok) {
+              const msg = data?.message || 'Google login failed';
+              throw new Error(msg);
+            }
+            if (data?.token && typeof window !== 'undefined') {
+              localStorage.setItem('auth_token', data.token);
+              localStorage.setItem('auth_user', JSON.stringify(data.user || {}));
+            }
+            setSuccess('Logged in with Google! Redirecting...');
+            setTimeout(() => {
+              const role = (data?.user?.role || '').toString().toLowerCase();
+              const premium = !!data?.user?.premium_package;
+              const plan = getEffectivePlan();
+              const endsAt = data?.user?.trial_ends_at ? new Date(data.user.trial_ends_at) : null;
+              const freeExpired = (!premium && (plan === 'free') && endsAt && !isNaN(endsAt.getTime()) && Date.now() > endsAt.getTime());
+              if (freeExpired) {
+                try { localStorage.removeItem('auth_token'); } catch {}
+                router.push('/pricing');
+                return;
+              }
+              if (role === 'super') {
+                router.push('/dashboard/admin/super');
+              } else if (role === 'photographer' || role === 'business') {
+                router.push('/dashboard');
+              } else {
+                router.push('/profile');
+              }
+            }, 600);
+          } catch (e: any) {
+            setError(e?.message || 'Google login failed');
+          }
+        },
+        ux_mode: 'popup',
+        auto_select: false,
+        cancel_on_tap_outside: true,
+      });
+      gsiReadyRef.current = true;
+    }
+    if (googleBtnRef.current) {
+      try {
+        google.accounts.id.renderButton(googleBtnRef.current, {
+          theme: 'outline',
+          size: 'large',
+          type: 'standard',
+          shape: 'pill',
+          width: 260,
+          text: 'continue_with',
+          logo_alignment: 'left',
+        });
+      } catch {}
+    }
+  }, [gsiLoaded, router]);
+
+  // Facebook SDK loader
+  useEffect(() => {
+    if ((window as any).FB) return;
+    (window as any).fbAsyncInit = function() {
+      const FB = (window as any).FB;
+      const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
+      if (!FB || !appId) return;
+      FB.init({ appId, cookie: true, xfbml: false, version: 'v17.0' });
+    };
+    const s = document.createElement('script');
+    s.async = true;
+    s.defer = true;
+    s.crossOrigin = 'anonymous';
+    s.src = 'https://connect.facebook.net/en_US/sdk.js';
+    document.body.appendChild(s);
+    return () => { try { document.body.removeChild(s); } catch {} };
+  }, []);
+
+  const handleFacebookLogin = async () => {
+    const FB = (window as any).FB;
+    if (!FB) { setError('Facebook SDK not loaded'); return; }
+    const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
+    if (!appId) { setError('Facebook App ID not configured'); return; }
+    FB.login(async (response: any) => {
+      try {
+        if (!response || response.status !== 'connected') {
+          setError('Facebook login was not completed');
+          return;
+        }
+        const access_token = response.authResponse?.accessToken;
+        if (!access_token) { setError('No Facebook access token'); return; }
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/oauth/facebook`, {
+          method: 'POST',
+          headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ access_token }),
+        });
+        const data = await res.json().catch(() => ({} as any));
+        if (!res.ok) {
+          const msg = data?.message || 'Facebook login failed';
+          throw new Error(msg);
+        }
+        if (data?.token && typeof window !== 'undefined') {
+          localStorage.setItem('auth_token', data.token);
+          localStorage.setItem('auth_user', JSON.stringify(data.user || {}));
+        }
+        setSuccess('Logged in with Facebook! Redirecting...');
+        setTimeout(() => {
+          const role = (data?.user?.role || '').toString().toLowerCase();
+          const premium = !!data?.user?.premium_package;
+          const plan = getEffectivePlan();
+          const endsAt = data?.user?.trial_ends_at ? new Date(data.user.trial_ends_at) : null;
+          const freeExpired = (!premium && (plan === 'free') && endsAt && !isNaN(endsAt.getTime()) && Date.now() > endsAt.getTime());
+          if (freeExpired) {
+            try { localStorage.removeItem('auth_token'); } catch {}
+            router.push('/pricing');
+            return;
+          }
+          if (role === 'super') {
+            router.push('/dashboard/admin/super');
+          } else if (role === 'photographer' || role === 'business') {
+            router.push('/dashboard');
+          } else {
+            router.push('/profile');
+          }
+        }, 600);
+      } catch (e: any) {
+        setError(e?.message || 'Facebook login failed');
+      }
+    }, { scope: 'public_profile,email' });
   };
 
   return (
@@ -273,16 +435,16 @@ export default function LoginPage() {
 
               {/* Social Login */}
               <div className="grid grid-cols-2 gap-4">
-                <button className="flex items-center justify-center space-x-2 py-3 border-2 border-gray-200 rounded-xl hover:border-gray-300 transition-colors">
-                  <svg className="w-5 h-5" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                  </svg>
-                  <span className="font-medium text-gray-700">Google</span>
-                </button>
-                <button className="flex items-center justify-center space-x-2 py-3 border-2 border-gray-200 rounded-xl hover:border-gray-300 transition-colors">
+                <div className="flex items-center justify-center py-2 border-2 border-gray-200 rounded-xl">
+                  {gsiLoaded ? (
+                    <div ref={googleBtnRef} className="flex items-center justify-center" />
+                  ) : (
+                    <button className="flex items-center justify-center space-x-2 py-3 px-4 rounded-xl opacity-60 cursor-not-allowed" disabled aria-disabled>
+                      <span className="font-medium text-gray-700">Loading…</span>
+                    </button>
+                  )}
+                </div>
+                <button type="button" onClick={handleFacebookLogin} ref={fbBtnRef} className="flex items-center justify-center space-x-2 py-3 border-2 border-gray-200 rounded-xl hover:border-gray-300 transition-colors">
                   <svg className="w-5 h-5" fill="#1877F2" viewBox="0 0 24 24">
                     <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                   </svg>
