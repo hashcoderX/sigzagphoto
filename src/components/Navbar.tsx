@@ -19,7 +19,8 @@ export default function Navbar() {
     { href: '/', label: 'Home' },
     { href: '/about', label: 'About' },
     { href: '/gallery', label: 'Explore' },
-    { href: '/pricing', label: 'Pricing' },
+    // Pricing temporarily hidden
+    // { href: '/pricing', label: 'Pricing' },
     { href: '/contact', label: 'Contact' },
   ];
 

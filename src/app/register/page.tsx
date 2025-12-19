@@ -69,13 +69,13 @@ export default function RegisterPage() {
       fd.append('role', userType);
       if (formData.phone) fd.append('phone', formData.phone);
       if (formData.whatsapp) fd.append('whatsapp', formData.whatsapp);
-      if (formData.website) fd.append('website', formData.website);
+      if (userType !== 'buyer' && formData.website) fd.append('website', formData.website);
       if (formData.country) fd.append('country', formData.country);
       if (formData.address) fd.append('address', formData.address);
-      if (formData.currency) fd.append('currency', formData.currency);
+      if (userType !== 'buyer' && formData.currency) fd.append('currency', formData.currency);
       // No membership/subscription fields
-      if (formData.logoFile) fd.append('logo', formData.logoFile);
-      if (formData.coverFile) fd.append('cover', formData.coverFile);
+      if (userType !== 'buyer' && formData.logoFile) fd.append('logo', formData.logoFile);
+      if (userType !== 'buyer' && formData.coverFile) fd.append('cover', formData.coverFile);
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/register`, {
         method: 'POST',
@@ -192,70 +192,72 @@ export default function RegisterPage() {
 
             {/* Registration Form */}
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Logo Upload */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Logo (PNG/JPG, max 2MB)</label>
-                  <div
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f && f.type.startsWith('image/')) setLogoFile(f); }}
-                    className="relative rounded-2xl border-2 border-dashed border-gray-200 hover:border-[#6C63FF] transition-colors p-4 flex items-center gap-4 cursor-pointer bg-white"
-                  >
-                    <input
-                      id="logo-input"
-                      type="file"
-                      accept="image/*"
-                      className="absolute inset-0 opacity-0 cursor-pointer"
-                      onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
-                    />
-                    <div className="flex-shrink-0 w-16 h-16 rounded-xl bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center">
-                      {logoPreview ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={logoPreview} alt="Logo preview" className="w-16 h-16 object-cover rounded-xl" />
-                      ) : (
-                        <UploadCloud className="w-7 h-7 text-[#6C63FF]" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">Click to upload</p>
-                      <p className="text-xs text-gray-500">or drag & drop a square image</p>
-                      {formData.logoFile && <p className="text-xs text-gray-600 mt-1">{formData.logoFile.name}</p>}
-                    </div>
-                  </div>
-                </div>
-                {/* Cover Upload */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Cover Photo (PNG/JPG, max 4MB)</label>
-                  <div
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f && f.type.startsWith('image/')) setCoverFile(f); }}
-                    className="relative rounded-2xl border-2 border-dashed border-gray-200 hover:border-[#6C63FF] transition-colors p-4 cursor-pointer bg-white"
-                  >
-                    <input
-                      id="cover-input"
-                      type="file"
-                      accept="image/*"
-                      className="absolute inset-0 opacity-0 cursor-pointer"
-                      onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
-                    />
-                    <div className="w-full">
-                      <div className="w-full aspect-[16/9] rounded-xl bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center overflow-hidden">
-                        {coverPreview ? (
+              {userType !== 'buyer' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Logo Upload */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Logo (PNG/JPG, max 2MB)</label>
+                    <div
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f && f.type.startsWith('image/')) setLogoFile(f); }}
+                      className="relative rounded-2xl border-2 border-dashed border-gray-200 hover:border-[#6C63FF] transition-colors p-4 flex items-center gap-4 cursor-pointer bg-white"
+                    >
+                      <input
+                        id="logo-input"
+                        type="file"
+                        accept="image/*"
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
+                      />
+                      <div className="flex-shrink-0 w-16 h-16 rounded-xl bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center">
+                        {logoPreview ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={coverPreview} alt="Cover preview" className="w-full h-full object-cover" />
+                          <img src={logoPreview} alt="Logo preview" className="w-16 h-16 object-cover rounded-xl" />
                         ) : (
-                          <div className="flex flex-col items-center text-center">
-                            <UploadCloud className="w-7 h-7 text-[#6C63FF] mb-1" />
-                            <p className="text-sm font-semibold text-gray-900">Click to upload</p>
-                            <p className="text-xs text-gray-500">or drag & drop a 16:9 image</p>
-                          </div>
+                          <UploadCloud className="w-7 h-7 text-[#6C63FF]" />
                         )}
                       </div>
-                      {formData.coverFile && <p className="text-xs text-gray-600 mt-2">{formData.coverFile.name}</p>}
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">Click to upload</p>
+                        <p className="text-xs text-gray-500">or drag & drop a square image</p>
+                        {formData.logoFile && <p className="text-xs text-gray-600 mt-1">{formData.logoFile.name}</p>}
+                      </div>
+                    </div>
+                  </div>
+                  {/* Cover Upload */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Cover Photo (PNG/JPG, max 4MB)</label>
+                    <div
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f && f.type.startsWith('image/')) setCoverFile(f); }}
+                      className="relative rounded-2xl border-2 border-dashed border-gray-200 hover:border-[#6C63FF] transition-colors p-4 cursor-pointer bg-white"
+                    >
+                      <input
+                        id="cover-input"
+                        type="file"
+                        accept="image/*"
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
+                      />
+                      <div className="w-full">
+                        <div className="w-full aspect-[16/9] rounded-xl bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center overflow-hidden">
+                          {coverPreview ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={coverPreview} alt="Cover preview" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="flex flex-col items-center text-center">
+                              <UploadCloud className="w-7 h-7 text-[#6C63FF] mb-1" />
+                              <p className="text-sm font-semibold text-gray-900">Click to upload</p>
+                              <p className="text-xs text-gray-500">or drag & drop a 16:9 image</p>
+                            </div>
+                          )}
+                        </div>
+                        {formData.coverFile && <p className="text-xs text-gray-600 mt-2">{formData.coverFile.name}</p>}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
               {error && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
@@ -382,16 +384,18 @@ export default function RegisterPage() {
                     placeholder="+94 77 123 4567"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Website</label>
-                  <input
-                    type="text"
-                    value={formData.website}
-                    onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#6C63FF] focus:outline-none transition-colors"
-                    placeholder="https://example.com"
-                  />
-                </div>
+                {userType !== 'buyer' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Website</label>
+                    <input
+                      type="text"
+                      value={formData.website}
+                      onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#6C63FF] focus:outline-none transition-colors"
+                      placeholder="https://example.com"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Address & Country */}
@@ -408,18 +412,20 @@ export default function RegisterPage() {
                     ))}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Currency</label>
-                  <select
-                    value={formData.currency}
-                    onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#6C63FF] focus:outline-none transition-colors"
-                  >
-                    {CURRENCIES.map(cur => (
-                      <option key={cur.code} value={cur.code}>{cur.code} — {cur.name}</option>
-                    ))}
-                  </select>
-                </div>
+                {userType !== 'buyer' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Currency</label>
+                    <select
+                      value={formData.currency}
+                      onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#6C63FF] focus:outline-none transition-colors"
+                    >
+                      {CURRENCIES.map(cur => (
+                        <option key={cur.code} value={cur.code}>{cur.code} — {cur.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
