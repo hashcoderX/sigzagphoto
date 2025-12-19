@@ -77,9 +77,13 @@ export default function AdminDashboardPage() {
                                 <div className="mb-8 space-y-4">
                                     <div className="flex items-center space-x-4">
                                         {user.logo_url && (
-                                            <div className="w-16 h-16 rounded-2xl overflow-hidden flex-shrink-0">
+                                            <div className="flex-shrink-0">
                                                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                <img src={user.logo_url} alt="Logo" className="w-full h-full object-cover" />
+                                                <img
+                                                    src={user.logo_url}
+                                                    alt="Logo"
+                                                    className="max-h-16 w-auto object-contain"
+                                                />
                                             </div>
                                         )}
                                         <div>

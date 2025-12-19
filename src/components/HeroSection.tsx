@@ -58,12 +58,23 @@ const slides = [
 
 export default function HeroSection() {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [authed, setAuthed] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % slides.length);
     }, 5000);
     return () => clearInterval(timer);
+  }, []);
+
+  // Detect simple auth state from localStorage token
+  useEffect(() => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      setAuthed(!!token);
+    } catch {
+      setAuthed(false);
+    }
   }, []);
 
   const nextSlide = () => setCurrentSlide((prev) => (prev + 1) % slides.length);
@@ -175,13 +186,13 @@ export default function HeroSection() {
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
-              <Link href="/register">
+              <Link href={authed ? "/dashboard/upload" : "/register"}>
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   className="bg-white text-[#6C63FF] px-8 py-4 rounded-full font-bold text-lg shadow-2xl hover:shadow-white/50 transition-all flex items-center space-x-2 group"
                 >
-                  <span>Join Now</span>
+                  <span>{authed ? 'Upload Images' : 'Join Now'}</span>
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </motion.button>
               </Link>
