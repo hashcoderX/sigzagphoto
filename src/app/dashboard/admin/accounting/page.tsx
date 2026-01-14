@@ -39,6 +39,12 @@ export default function AccountingPage() {
   const [eventTypes, setEventTypes] = useState<Record<string, string>>({});
   const chartRef = useRef<SVGSVGElement>(null as any);
   const donutRef = useRef<SVGSVGElement>(null as any);
+  const [downloadingReport, setDownloadingReport] = useState<boolean>(false);
+  // View modals
+  const [showEntryModal, setShowEntryModal] = useState(false);
+  const [viewEntry, setViewEntry] = useState<Entry | null>(null);
+  const [showJcExpenseModal, setShowJcExpenseModal] = useState(false);
+  const [viewJcExpense, setViewJcExpense] = useState<JobCardExpense | null>(null);
 
   const getCurrencySymbol = (currency: string) => {
     const symbols: { [key: string]: string } = { USD: '$', EUR: '€', GBP: '£', JPY: '¥' };
@@ -404,6 +410,11 @@ export default function AccountingPage() {
   const cancelEdit = () => { setEditId(null); setEditForm({}); };
   const saveEdit = async (id: number) => { if (!token) return; try { const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/accounting/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(editForm) }); const data = await res.json(); if (!res.ok) throw new Error(data?.message || 'Update failed'); cancelEdit(); fetchList(token, page?.current_page || 1); } catch (e: any) { setError(e?.message || 'Update failed'); } };
   const remove = async (id: number) => { if (!token) return; if (!confirm('Delete this entry?')) return; try { const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/accounting/${id}`, { method: 'DELETE', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } }); if (!res.ok) throw new Error('Delete failed'); fetchList(token, page?.current_page || 1); } catch (e: any) { setError(e?.message || 'Delete failed'); } };
+
+  const openEntryModal = (entry: Entry) => { setViewEntry(entry); setShowEntryModal(true); };
+  const closeEntryModal = () => { setShowEntryModal(false); setViewEntry(null); };
+  const openJcExpenseModal = (expense: JobCardExpense) => { setViewJcExpense(expense); setShowJcExpenseModal(true); };
+  const closeJcExpenseModal = () => { setShowJcExpenseModal(false); setViewJcExpense(null); };
 
   const createJobCardExpense = async () => {
     if (!token) return;
@@ -786,6 +797,7 @@ export default function AccountingPage() {
                             </div>
                           </div>
                         </div>
+                        {/* PDF generation button removed per request */}
                       </div>
                     );
                   }
@@ -816,7 +828,8 @@ export default function AccountingPage() {
                       return (
                         <tr
                           key={it.id}
-                          className={`${isIncome ? 'hover:bg-emerald-50/50' : 'hover:bg-rose-50/50'} transition-colors`}
+                          onClick={() => openEntryModal(it)}
+                          className={`${isIncome ? 'hover:bg-emerald-50/50' : 'hover:bg-rose-50/50'} transition-colors cursor-pointer`}
                         >
                           <td className="py-2 pr-4">
                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ring-1 ${isIncome ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-rose-50 text-rose-700 ring-rose-200'}`}>
@@ -866,7 +879,7 @@ export default function AccountingPage() {
                   </thead>
                   <tbody>
                     {jobCardExpenses?.data?.map((expense: JobCardExpense) => (
-                      <tr key={expense.id} className="hover:bg-rose-50/50 transition-colors">
+                      <tr key={expense.id} onClick={() => openJcExpenseModal(expense)} className="hover:bg-rose-50/50 transition-colors cursor-pointer">
                         <td className="py-2 pr-4">
                           <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 ring-1 ring-blue-200">
                             {eventTypes[expense.event_type] || expense.event_type}
@@ -914,6 +927,123 @@ export default function AccountingPage() {
                 </table>
                 )}
                 </div>
+                {/* Entry Details Modal */}
+                {showEntryModal && viewEntry && (
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={closeEntryModal}>
+                    <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden z-[100] relative" tabIndex={-1} style={{ pointerEvents: 'auto' }} onClick={(e) => e.stopPropagation()}>
+                      <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                        <div>
+                          <h3 className="text-xl font-bold text-gray-900">Entry Details #{viewEntry.id}</h3>
+                          <p className="text-gray-600 text-sm">Overview of the selected accounting entry</p>
+                        </div>
+                        <button className="text-gray-500 hover:text-gray-700" onClick={closeEntryModal} aria-label="Close"> <X className="w-6 h-6" /> </button>
+                      </div>
+                      <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <div className="text-xs text-gray-500">Type</div>
+                            <div className="font-semibold capitalize">{viewEntry.type}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500">Credit/Debit</div>
+                            <div className="font-semibold">{viewEntry.type === 'income' ? 'Credit' : 'Debit'}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500">Amount</div>
+                            <div className={`font-semibold ${viewEntry.type === 'income' ? 'text-emerald-700' : 'text-rose-700'}`}>{formatMoney(Number(viewEntry.amount), userCurrency)}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500">Currency</div>
+                            <div className="font-semibold">{viewEntry.currency || userCurrency}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500">Category</div>
+                            <div className="font-semibold">{viewEntry.category || '-'}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500">Date</div>
+                            <div className="font-semibold">{new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(new Date(viewEntry.date))}</div>
+                          </div>
+                          <div className="sm:col-span-2">
+                            <div className="text-xs text-gray-500">Notes</div>
+                            <div className="font-semibold">{viewEntry.notes || '-'}</div>
+                          </div>
+                          <div className="sm:col-span-2">
+                            <div className="text-xs text-gray-500">Running Balance</div>
+                            <div className={`inline-flex items-center px-2.5 py-1 rounded-full ring-1 ${viewEntry.balance >= 0 ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-rose-50 text-rose-700 ring-rose-200'}`}>
+                              {formatMoney(viewEntry.balance, userCurrency)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-4 border-t border-gray-100 flex items-center justify-end gap-2">
+                        <button className="btn-secondary" onClick={closeEntryModal}>Close</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Job Card Expense Details Modal */}
+                {showJcExpenseModal && viewJcExpense && (
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={closeJcExpenseModal}>
+                    <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden z-[100] relative" tabIndex={-1} style={{ pointerEvents: 'auto' }} onClick={(e) => e.stopPropagation()}>
+                      <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                        <div>
+                          <h3 className="text-xl font-bold text-gray-900">Job Card Expense #{viewJcExpense.id}</h3>
+                          <p className="text-gray-600 text-sm">Details for this job card expense</p>
+                        </div>
+                        <button className="text-gray-500 hover:text-gray-700" onClick={closeJcExpenseModal} aria-label="Close"> <X className="w-6 h-6" /> </button>
+                      </div>
+                      <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <div className="text-xs text-gray-500">Event Type</div>
+                            <div className="font-semibold">{eventTypes[viewJcExpense.event_type] || viewJcExpense.event_type}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500">Job Card</div>
+                            <div className="font-semibold">{viewJcExpense.job_card ? `#${viewJcExpense.job_card.id} - ${viewJcExpense.job_card.title}` : (viewJcExpense.job_card_id ? `#${viewJcExpense.job_card_id}` : '-')}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500">Amount</div>
+                            <div className="font-semibold text-rose-700">{formatMoney(Number(viewJcExpense.amount), userCurrency)}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500">Date</div>
+                            <div className="font-semibold">{new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: '2-digit', timeZone: 'UTC' }).format(new Date(viewJcExpense.expense_date))}</div>
+                          </div>
+                          <div className="sm:col-span-2">
+                            <div className="text-xs text-gray-500">Description</div>
+                            <div className="font-semibold">{viewJcExpense.description || '-'}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500">Vendor</div>
+                            <div className="font-semibold">{viewJcExpense.vendor || '-'}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500">Receipt</div>
+                            <div className="font-semibold">
+                              {viewJcExpense.receipt_path ? (
+                                <a href={`${process.env.NEXT_PUBLIC_API_URL}/storage/${viewJcExpense.receipt_path}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">View Receipt</a>
+                              ) : (
+                                '-' 
+                              )}
+                            </div>
+                          </div>
+                          {viewJcExpense.metadata && (
+                            <div className="sm:col-span-2">
+                              <div className="text-xs text-gray-500">Metadata</div>
+                              <pre className="text-xs bg-gray-50 rounded-xl p-3 overflow-auto max-h-40 border border-gray-100">{JSON.stringify(viewJcExpense.metadata, null, 2)}</pre>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="p-4 border-t border-gray-100 flex items-center justify-end gap-2">
+                        <button className="btn-secondary" onClick={closeJcExpenseModal}>Close</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div className="mt-8">
                   <div className="mb-3 flex items-center justify-between">
                     <div className="text-sm text-gray-600">Trends</div>

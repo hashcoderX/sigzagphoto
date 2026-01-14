@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
+import dynamic from 'next/dynamic';
 import { Upload, Globe, Shield, Briefcase, TrendingUp, Users, Camera, Sparkles, DollarSign } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -10,7 +11,8 @@ import HeroSection from '@/components/HeroSection';
 import FeatureCard from '@/components/FeatureCard';
 import PhotoCard from '@/components/PhotoCard';
 import PortraitModal, { PortraitPhoto } from '@/components/PortraitModal';
-import TestimonialSlider from '@/components/TestimonialSlider';
+// Render slider on client only to avoid hydration attribute mismatches from extensions
+const TestimonialSlider = dynamic(() => import('@/components/TestimonialSlider'), { ssr: false });
 import Link from 'next/link';
 
 const categories = [
@@ -665,7 +667,7 @@ export default function Home() {
             <p className="text-xl text-white/90 mb-8">
               Get the latest news, tips, and exclusive offers delivered to your inbox
             </p>
-            <form onSubmit={handleSubscribe} className="flex flex-col sm:flex-row gap-4 max-w-xl mx-auto">
+            <form onSubmit={handleSubscribe} className="flex flex-col sm:flex-row gap-4 max-w-xl mx-auto" suppressHydrationWarning>
               <input
                 type="email"
                 placeholder="Enter your email"
@@ -673,6 +675,7 @@ export default function Home() {
                 onChange={(e) => setEmail(e.target.value)}
                 className="flex-1 px-6 py-4 rounded-full text-gray-900 focus:outline-none focus:ring-4 focus:ring-white/50"
                 disabled={subscribing}
+                suppressHydrationWarning
               />
               <motion.button
                 type="submit"
@@ -680,6 +683,7 @@ export default function Home() {
                 whileTap={{ scale: 0.95 }}
                 disabled={subscribing}
                 className="bg-white text-[#6C63FF] px-8 py-4 rounded-full font-bold hover:shadow-xl transition-all disabled:opacity-50"
+                suppressHydrationWarning
               >
                 {subscribing ? 'Subscribing...' : 'Subscribe'}
               </motion.button>

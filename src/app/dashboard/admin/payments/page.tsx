@@ -13,7 +13,7 @@ import { hasBusinessAccess, isBusinessOrPhotographer, isFreeExpired } from "@/li
 interface Customer { id: number; name: string; }
 interface Booking { id: number; }
 interface JobCard { id: number; title: string }
-interface Payment { id: number; customer_id: number; booking_id?: number | null; amount: number; currency: string; method?: string; status: string; paid_at?: string | null; customer?: Customer; booking?: Booking; payment_type?: string }
+interface Payment { id: number; customer_id: number; booking_id?: number | null; job_card_id?: number | null; invoice_id?: number | null; amount: number; currency: string; method?: string; reference?: string | null; status: string; paid_at?: string | null; customer?: Customer; booking?: Booking; payment_type?: string }
 interface Page<T> { data: T[]; current_page: number; last_page: number; }
 interface PaymentsSummary { today_total: number; month_total: number; currency?: string }
 
@@ -39,6 +39,21 @@ export default function PaymentsPage() {
   const [customerFilter, setCustomerFilter] = useState<number | "">("");
   const [jobCardFilter, setJobCardFilter] = useState<number | "">("");
   const [paymentTypeFilter, setPaymentTypeFilter] = useState<string>("");
+  // View payment details modal state
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewPayment, setViewPayment] = useState<Payment | null>(null);
+  const [viewLoading, setViewLoading] = useState<boolean>(false);
+  const [viewError, setViewError] = useState<string | null>(null);
+  // Receipt viewer inside details modal
+  const [viewReceiptLoading, setViewReceiptLoading] = useState<boolean>(false);
+  const [viewReceiptError, setViewReceiptError] = useState<string | null>(null);
+  const [viewReceiptUrl, setViewReceiptUrl] = useState<string | null>(null);
+  // Receipt viewer modal state
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [receiptLoading, setReceiptLoading] = useState<boolean>(false);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
+  const [receiptPaymentId, setReceiptPaymentId] = useState<number | null>(null);
 
   useEffect(() => {
     const t = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
@@ -101,17 +116,104 @@ export default function PaymentsPage() {
     if (!token) return; if (!confirm('Delete this payment?')) return; try { const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/payments/${id}`, { method: 'DELETE', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } }); if (!res.ok) throw new Error('Delete failed'); fetchList(token, page?.current_page || 1); } catch (e: any) { setError(e?.message || 'Delete failed'); }
   };
 
+  const openViewPaymentModal = async (paymentId: number) => {
+    if (!token) return;
+    setShowViewModal(true);
+    setViewLoading(true);
+    setViewError(null);
+    setViewPayment(null);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/payments/${paymentId}`, {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to load payment details');
+      const data: Payment = await res.json();
+      setViewPayment(data);
+    } catch (e: any) {
+      setViewError(e?.message || 'Failed to load payment details');
+    } finally {
+      setViewLoading(false);
+    }
+  };
+
+  const closeViewPaymentModal = () => {
+    setShowViewModal(false);
+    setViewPayment(null);
+    setViewLoading(false);
+    setViewError(null);
+    if (viewReceiptUrl) { URL.revokeObjectURL(viewReceiptUrl); }
+    setViewReceiptUrl(null);
+    setViewReceiptLoading(false);
+    setViewReceiptError(null);
+  };
+
+  const loadViewReceipt = async (paymentId: number) => {
+    if (!token) return;
+    setViewReceiptLoading(true);
+    setViewReceiptError(null);
+    try {
+      const pdfRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/payments/${paymentId}/pdf`, {
+        headers: { Accept: 'application/pdf', Authorization: `Bearer ${token}` },
+      });
+      if (!pdfRes.ok) throw new Error('Failed to load receipt');
+      const ct = (pdfRes.headers.get('content-type') || '').toLowerCase();
+      if (!ct.includes('application/pdf')) throw new Error('Receipt not available');
+      const blob = await pdfRes.blob();
+      const url = URL.createObjectURL(blob);
+      setViewReceiptUrl(url);
+    } catch (e: any) {
+      setViewReceiptError(e?.message || 'Failed to load receipt');
+    } finally {
+      setViewReceiptLoading(false);
+    }
+  };
+
+  const openReceiptModal = async (paymentId: number) => {
+    if (!token) return;
+    setReceiptPaymentId(paymentId);
+    setReceiptError(null);
+    setReceiptLoading(true);
+    try {
+      const pdfRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/payments/${paymentId}/pdf`, {
+        headers: { Accept: 'application/pdf', Authorization: `Bearer ${token}` },
+      });
+      if (!pdfRes.ok) throw new Error('Failed to load receipt');
+      const ct = pdfRes.headers.get('content-type') || '';
+      if (!ct.toLowerCase().includes('application/pdf')) {
+        throw new Error('Receipt not available');
+      }
+      const blob = await pdfRes.blob();
+      const url = URL.createObjectURL(blob);
+      setReceiptUrl(url);
+      setShowReceiptModal(true);
+    } catch (e: any) {
+      setReceiptError(e?.message || 'Failed to load receipt');
+      setShowReceiptModal(true);
+    } finally {
+      setReceiptLoading(false);
+    }
+  };
+
+  const closeReceiptModal = () => {
+    if (receiptUrl) URL.revokeObjectURL(receiptUrl);
+    setReceiptUrl(null);
+    setReceiptPaymentId(null);
+    setReceiptLoading(false);
+    setReceiptError(null);
+    setShowReceiptModal(false);
+  };
+
   return (
     <main>
       <Navbar />
       <section className="pt-24 pb-16 bg-gradient-to-br from-purple-50 to-pink-50 min-h-[60vh]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="bg-white rounded-3xl shadow-2xl p-8 md:p-10">
+          <motion.div suppressHydrationWarning initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="bg-white rounded-3xl shadow-2xl p-8 md:p-10">
             <div className="relative mb-8">
-              <div className="group rounded-3xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-[2px] shadow-xl">
-                <div className="rounded-3xl bg-white/10 backdrop-blur-xl px-6 py-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+              <div suppressHydrationWarning className="group rounded-3xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-[2px] shadow-xl">
+                <div suppressHydrationWarning className="rounded-3xl bg-white/10 backdrop-blur-xl px-6 py-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
                   <div className="flex items-center gap-4">
-                    <button onClick={() => router.push('/dashboard/admin')} className="transition-all duration-200 bg-white/15 hover:bg-white/25 text-white px-4 py-2 rounded-xl flex items-center gap-2 shadow-inner">
+                    <button suppressHydrationWarning onClick={() => router.push('/dashboard/admin')} className="transition-all duration-200 bg-white/15 hover:bg-white/25 text-white px-4 py-2 rounded-xl flex items-center gap-2 shadow-inner">
                       <ArrowLeft className="w-4 h-4" /> Back
                     </button>
                     <div>
@@ -120,32 +222,32 @@ export default function PaymentsPage() {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-3 items-start">
-                    <div className="flex items-center bg-white/10 border border-white/20 rounded-xl px-3 py-2 shadow-inner focus-within:ring-2 focus-within:ring-white/40">
-                      <input className="bg-transparent placeholder-indigo-200 text-indigo-50 text-sm focus:outline-none w-40" placeholder="Search..." value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && token) fetchList(token, 1); }} />
+                    <div suppressHydrationWarning className="flex items-center bg-white/10 border border-white/20 rounded-xl px-3 py-2 shadow-inner focus-within:ring-2 focus-within:ring-white/40">
+                      <input suppressHydrationWarning className="bg-transparent placeholder-indigo-200 text-indigo-50 text-sm focus:outline-none w-40" placeholder="Search..." value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && token) fetchList(token, 1); }} />
                     </div>
-                    <select className="filterSelect" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                    <select suppressHydrationWarning className="filterSelect" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                       <option value="">All Status</option>
                       <option value="pending">Pending</option>
                       <option value="paid">Paid</option>
                       <option value="failed">Failed</option>
                     </select>
-                    <select className="filterSelect" value={customerFilter || ''} onChange={(e) => setCustomerFilter(e.target.value ? Number(e.target.value) : '')}>
+                    <select suppressHydrationWarning className="filterSelect" value={customerFilter || ''} onChange={(e) => setCustomerFilter(e.target.value ? Number(e.target.value) : '')}>
                       <option value="">All Customers</option>
                       {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
-                    <select className="filterSelect" value={jobCardFilter || ''} onChange={(e) => setJobCardFilter(e.target.value ? Number(e.target.value) : '')}>
+                    <select suppressHydrationWarning className="filterSelect" value={jobCardFilter || ''} onChange={(e) => setJobCardFilter(e.target.value ? Number(e.target.value) : '')}>
                       <option value="">All Job Cards</option>
                       {jobCards.map(j => <option key={j.id} value={j.id}>#{j.id} {j.title}</option>)}
                     </select>
-                    <select className="filterSelect" value={paymentTypeFilter} onChange={(e) => setPaymentTypeFilter(e.target.value)}>
+                    <select suppressHydrationWarning className="filterSelect" value={paymentTypeFilter} onChange={(e) => setPaymentTypeFilter(e.target.value)}>
                       <option value="">All Types</option>
                       <option value="advance">Advance</option>
                       <option value="transport">Transport</option>
                     </select>
                     <div className="flex gap-2">
-                      <button onClick={() => token && fetchList(token, 1)} className="actionBtn">Apply</button>
-                      <button onClick={() => { setQ(''); setStatusFilter(''); setCustomerFilter(''); setJobCardFilter(''); setPaymentTypeFilter(''); token && fetchList(token, 1); }} className="actionBtn">Reset</button>
-                      <button onClick={() => setCreating(true)} className="newBtn flex items-center gap-2"><Plus className="w-4 h-4" /> New Payment</button>
+                      <button suppressHydrationWarning onClick={() => token && fetchList(token, 1)} className="actionBtn">Apply</button>
+                      <button suppressHydrationWarning onClick={() => { setQ(''); setStatusFilter(''); setCustomerFilter(''); setJobCardFilter(''); setPaymentTypeFilter(''); token && fetchList(token, 1); }} className="actionBtn">Reset</button>
+                      <button suppressHydrationWarning onClick={() => setCreating(true)} className="newBtn flex items-center gap-2"><Plus className="w-4 h-4" /> New Payment</button>
                     </div>
                   </div>
                 </div>
@@ -202,7 +304,7 @@ export default function PaymentsPage() {
                   </thead>
                   <tbody>
                     {page?.data?.map(p => (
-                      <tr key={p.id}>
+                      <tr key={p.id} onClick={() => openViewPaymentModal(p.id)} className="cursor-pointer hover:bg-gray-50">
                         <td className="py-2 pr-4">{p.customer?.name || `#${p.customer_id}`}</td>
                         <td className="py-2 pr-4">{p.currency} {Number(p.amount).toFixed(2)}</td>
                         <td className="py-2 pr-4">{p.payment_type ? p.payment_type.charAt(0).toUpperCase() + p.payment_type.slice(1) : '-'}</td>
@@ -217,16 +319,15 @@ export default function PaymentsPage() {
                         <td className="py-2 pr-4">
                           {editId === p.id ? (
                             <div className="flex gap-2">
-                              <button onClick={() => saveEdit(p.id)} className="btn-primary flex items-center gap-1"><Save className="w-4 h-4" /> Save</button>
-                              <button onClick={cancelEdit} className="btn-secondary flex items-center gap-1"><X className="w-4 h-4" /> Cancel</button>
+                              <button onClick={(e) => { e.stopPropagation(); saveEdit(p.id); }} className="btn-primary flex items-center gap-1"><Save className="w-4 h-4" /> Save</button>
+                              <button onClick={(e) => { e.stopPropagation(); cancelEdit(); }} className="btn-secondary flex items-center gap-1"><X className="w-4 h-4" /> Cancel</button>
                             </div>
                           ) : (
                             <div className="flex gap-2">
-                              <button onClick={() => startEdit(p)} className="btn-secondary">Edit</button>
-                              <button onClick={async () => {
-                                if (!token) return; try { const pdfRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/payments/${p.id}/pdf`, { headers: { Authorization: `Bearer ${token}` } }); if (!pdfRes.ok) throw new Error('Failed to load receipt'); const blob = await pdfRes.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `payment-${p.id}.pdf`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); } catch (e) { setError((e as any)?.message || 'Failed to download receipt'); }
-                              }} className="btn-secondary">View Receipt</button>
-                              <button onClick={() => remove(p.id)} className="btn-danger flex items-center gap-1"><Trash2 className="w-4 h-4" /> Delete</button>
+                              <button onClick={(e) => { e.stopPropagation(); startEdit(p); }} className="btn-secondary">Edit</button>
+                              {/* PDF receipt is optional; hidden for now per request */}
+                              {/* <button onClick={(e) => { e.stopPropagation(); openReceiptModal(p.id); }} className="btn-secondary">View Receipt</button> */}
+                              <button onClick={(e) => { e.stopPropagation(); remove(p.id); }} className="btn-danger flex items-center gap-1"><Trash2 className="w-4 h-4" /> Delete</button>
                             </div>
                           )}
                         </td>
@@ -350,6 +451,131 @@ export default function PaymentsPage() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+            {showViewModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={closeViewPaymentModal}>
+                <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden z-[100] relative" tabIndex={-1} style={{ pointerEvents: 'auto' }} onClick={(e) => e.stopPropagation()}>
+                  <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900">Payment Details {viewPayment ? `#${viewPayment.id}` : ''}</h3>
+                      <p className="text-gray-600 text-sm">Overview of the selected payment</p>
+                    </div>
+                    <button className="text-gray-500 hover:text-gray-700" onClick={closeViewPaymentModal} aria-label="Close"> <X className="w-6 h-6" /> </button>
+                  </div>
+                  {viewLoading ? (
+                    <div className="p-8 text-center">
+                      <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-2"></div>
+                      <span className="text-sm text-gray-500">Loading details...</span>
+                    </div>
+                  ) : viewError ? (
+                    <div className="p-6">
+                      <div className="mb-4 bg-red-50 border-2 border-red-200 text-red-800 px-6 py-3 rounded-xl">{viewError}</div>
+                    </div>
+                  ) : viewPayment ? (
+                    <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <div className="text-xs text-gray-500">Customer</div>
+                          <div className="font-semibold">{viewPayment.customer?.name || `#${viewPayment.customer_id}`}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Amount</div>
+                          <div className="font-semibold">{viewPayment.currency} {Number(viewPayment.amount).toFixed(2)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Status</div>
+                          <div className="font-semibold capitalize">{viewPayment.status}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Type</div>
+                          <div className="font-semibold">{viewPayment.payment_type ? viewPayment.payment_type.charAt(0).toUpperCase() + viewPayment.payment_type.slice(1) : '-'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Paid At</div>
+                          <div className="font-semibold">{viewPayment.paid_at ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(new Date(viewPayment.paid_at)) : '-'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Method</div>
+                          <div className="font-semibold">{viewPayment.method || '-'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Reference</div>
+                          <div className="font-semibold">{viewPayment.reference || '-'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Booking</div>
+                          <div className="font-semibold">{viewPayment.booking ? `#${viewPayment.booking.id}` : (viewPayment.booking_id ? `#${viewPayment.booking_id}` : '-')}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Job Card</div>
+                          <div className="font-semibold">{viewPayment.job_card_id ? (() => { const jc = jobCards.find(j => j.id === viewPayment.job_card_id); return jc ? `#${jc.id} ${jc.title}` : `#${viewPayment.job_card_id}`; })() : '-'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Invoice</div>
+                          <div className="font-semibold">{viewPayment.invoice_id ? `#${viewPayment.invoice_id}` : '-'}</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-sm font-semibold text-gray-700">Receipt</div>
+                          <div className="flex gap-2">
+                            <button className="btn-secondary" onClick={() => loadViewReceipt(viewPayment.id)} disabled={viewReceiptLoading}> {viewReceiptLoading ? 'Loading…' : 'View PDF'} </button>
+                            {viewReceiptUrl && (
+                              <a href={viewReceiptUrl} download={`payment-${viewPayment.id}.pdf`} className="btn-primary">Download PDF</a>
+                            )}
+                          </div>
+                        </div>
+                        {viewReceiptError && (
+                          <div className="mb-3 bg-red-50 border-2 border-red-200 text-red-800 px-4 py-2 rounded-xl">{viewReceiptError}</div>
+                        )}
+                        {viewReceiptUrl && (
+                          <div className="w-full h-[60vh] border rounded-xl overflow-hidden">
+                            <iframe title="Payment Receipt" src={viewReceiptUrl} className="w-full h-full" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="p-4 border-t border-gray-100 flex items-center justify-end gap-2">
+                    <button className="btn-secondary" onClick={closeViewPaymentModal}>Close</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {showReceiptModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={closeReceiptModal}>
+                <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden z-[100] relative" tabIndex={-1} style={{ pointerEvents: 'auto' }} onClick={(e) => e.stopPropagation()}>
+                  <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900">Payment Receipt {receiptPaymentId ? `#${receiptPaymentId}` : ''}</h3>
+                      <p className="text-gray-600 text-sm">Preview and download the receipt</p>
+                    </div>
+                    <button className="text-gray-500 hover:text-gray-700" onClick={closeReceiptModal} aria-label="Close"> <X className="w-6 h-6" /> </button>
+                  </div>
+                  {receiptLoading ? (
+                    <div className="p-8 text-center">
+                      <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-2"></div>
+                      <span className="text-sm text-gray-500">Loading receipt...</span>
+                    </div>
+                  ) : receiptError ? (
+                    <div className="p-6">
+                      <div className="mb-4 bg-red-50 border-2 border-red-200 text-red-800 px-6 py-3 rounded-xl">{receiptError}</div>
+                      <div className="text-sm text-gray-600">Please try again or download from the Payments list.</div>
+                    </div>
+                  ) : receiptUrl ? (
+                    <div className="w-full h-[80vh]">
+                      <iframe title="Payment Receipt" src={receiptUrl} className="w-full h-full" />
+                    </div>
+                  ) : null}
+                  <div className="p-4 border-t border-gray-100 flex items-center justify-end gap-2">
+                    {receiptUrl && (
+                      <a href={receiptUrl} download={`payment-${receiptPaymentId || ''}.pdf`} className="btn-primary">Download</a>
+                    )}
+                    <button className="btn-secondary" onClick={closeReceiptModal}>Close</button>
+                  </div>
+                </div>
               </div>
             )}
           </motion.div>

@@ -406,7 +406,12 @@ export default function AdminSettingsPage() {
       });
       if (!res.ok) throw new Error('Failed to load footer rules');
       const data = await res.json();
-      setFooterRules(data);
+      const list = Array.isArray(data) ? data : (data?.data || []);
+      const normalized = list.map((r: any) => ({
+        ...r,
+        is_active: !!r?.is_active,
+      }));
+      setFooterRules(normalized);
     } catch (error) {
       console.error('Load footer rules failed:', error);
     } finally {
@@ -429,7 +434,7 @@ export default function AdminSettingsPage() {
       });
       if (!res.ok) throw new Error('Failed to add rule');
       const newRule = await res.json();
-      setFooterRules(prev => [...prev, newRule]);
+      setFooterRules(prev => [...prev, { ...newRule, is_active: !!newRule?.is_active }]);
       setNewRuleText('');
     } catch (error) {
       console.error('Add rule failed:', error);
@@ -964,7 +969,7 @@ export default function AdminSettingsPage() {
                                 <div className="flex items-center mt-1">
                                   <input
                                     type="checkbox"
-                                    checked={rule.is_active}
+                                    checked={!!rule.is_active}
                                     onChange={(e) => toggleFooterRule(rule.id, e.target.checked)}
                                     className="mr-2"
                                   />

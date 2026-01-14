@@ -6,7 +6,8 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { motion } from "framer-motion";
 import { Plus, Trash2, Save, X, DollarSign, Package } from "lucide-react";
-import AdminSectionHeader from "@/components/AdminSectionHeader";
+import dynamic from "next/dynamic";
+const AdminSectionHeader = dynamic(() => import("@/components/AdminSectionHeader"), { ssr: false });
 import { Calendar as RBCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { format, parse, startOfWeek, getDay, startOfMonth, endOfMonth, addHours, isAfter } from 'date-fns';
@@ -69,6 +70,22 @@ export default function BookingsPage() {
   const [bookingPayments, setBookingPayments] = useState<any[]>([]);
   // Edit booking items management
   const [editingBookingItems, setEditingBookingItems] = useState<PackageItem[]>([]);
+  // View booking details modal state
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewBooking, setViewBooking] = useState<Booking | null>(null);
+  const [viewLoading, setViewLoading] = useState<boolean>(false);
+  const [viewError, setViewError] = useState<string | null>(null);
+  const [viewPayments, setViewPayments] = useState<any[]>([]);
+  // Day bookings modal state
+  const [showDayModal, setShowDayModal] = useState(false);
+  const [dayDate, setDayDate] = useState<Date | null>(null);
+  const [dayBookings, setDayBookings] = useState<any[]>([]);
+
+  const isSameDay = (a: Date, b: Date) => {
+    const ay = a.getUTCFullYear(), am = a.getUTCMonth(), ad = a.getUTCDate();
+    const by = b.getUTCFullYear(), bm = b.getUTCMonth(), bd = b.getUTCDate();
+    return ay === by && am === bm && ad === bd;
+  };
 
   const locales = useMemo(() => ({ 'en-US': undefined as any }), []);
   const localizer = useMemo(() => dateFnsLocalizer({
@@ -422,12 +439,31 @@ export default function BookingsPage() {
         }
         throw new Error(data?.message || 'Create failed');
       }
+      // Attempt to download booking confirmation PDF
+      try {
+        const pdfRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/bookings/${data.id}/confirmation-report`, {
+          method: 'POST',
+          headers: { Accept: 'application/pdf', Authorization: `Bearer ${token}` },
+        });
+        if (pdfRes.ok) {
+          const blob = await pdfRes.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `booking_confirmation_${data.id}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(url);
+        }
+      } catch {}
+
       setCreateModalOpen(false);
       setForm({ status: 'scheduled' });
       setSelectedPackage(null);
       setBookingPackageItems([]);
       setFormErrors({});
-      setSuccessMessage('Booking created successfully! A job card has been automatically generated for this booking.');
+      setSuccessMessage('Booking created successfully! Confirmation PDF downloaded and a job card has been generated.');
       fetchList(token, 1);
       loadNextBooking(token);
       loadCalendar(token, calDate);
@@ -591,16 +627,70 @@ export default function BookingsPage() {
     setBookingPayments([]);
   };
 
+  const openViewBookingModal = async (bookingOrId: Booking | number) => {
+    if (!token) return;
+    setViewError(null);
+    setViewLoading(true);
+    try {
+      const id = typeof bookingOrId === 'number' ? bookingOrId : bookingOrId.id;
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/bookings/${id}`, {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+        cache: 'no-cache'
+      });
+      if (!res.ok) throw new Error('Failed to load booking details');
+      const bookingData = await res.json();
+      if (bookingData.booking_items) {
+        bookingData.bookingItems = bookingData.booking_items;
+        delete bookingData.booking_items;
+      }
+      setViewBooking(bookingData);
+      // Fetch payments for summary
+      try {
+        const payRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/payments?booking_id=${id}&per_page=100`, {
+          headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+          cache: 'no-cache'
+        });
+        if (payRes.ok) {
+          const payData = await payRes.json();
+          setViewPayments(payData.data || []);
+        }
+      } catch {}
+      setShowViewModal(true);
+    } catch (e: any) {
+      setViewError(e?.message || 'Failed to load booking details');
+    } finally {
+      setViewLoading(false);
+    }
+  };
+
+  const closeViewBookingModal = () => {
+    setShowViewModal(false);
+    setViewBooking(null);
+    setViewError(null);
+    setViewLoading(false);
+    setViewPayments([]);
+  };
+
+  const openDayBookings = (date: Date) => {
+    setDayDate(date);
+    // Filter existing calendar events for the selected day
+    const matches = events.filter(ev => ev.start && isSameDay(new Date(ev.start), date));
+    setDayBookings(matches);
+    setShowDayModal(true);
+  };
+
+  const closeDayBookings = () => { setShowDayModal(false); setDayDate(null); setDayBookings([]); };
+
   return (
     <main>
       <Navbar />
       <section className="pt-24 pb-16 bg-gradient-to-br from-purple-50 to-pink-50 min-h-[60vh]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="bg-white rounded-3xl shadow-2xl p-8 md:p-10">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="bg-white rounded-3xl shadow-2xl p-8 md:p-10" suppressHydrationWarning>
             <AdminSectionHeader title="Bookings" subtitle="Manage events, schedule, and customer reservations">
               <div className="flex flex-wrap gap-2 items-start">
-                <div className="flex items-center bg-white/10 border border-white/20 rounded-xl px-3 py-2 shadow-inner focus-within:ring-2 focus-within:ring-white/40">
-                  <input className="bg-transparent placeholder-indigo-200 text-indigo-50 text-xs focus:outline-none w-40" placeholder="Search bookings..." value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && token) fetchList(token, 1); }} />
+                <div className="flex items-center bg-white/10 border border-white/20 rounded-xl px-3 py-2 shadow-inner focus-within:ring-2 focus-within:ring-white/40" suppressHydrationWarning>
+                  <input className="bg-transparent placeholder-indigo-200 text-indigo-50 text-xs focus:outline-none w-40" placeholder="Search bookings..." value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && token) fetchList(token, 1); }} suppressHydrationWarning />
                 </div>
                 <button onClick={() => token && fetchList(token, 1)} className="actionBtn" aria-label="Search bookings">Search</button>
                 <button onClick={() => { setQ(''); token && fetchList(token,1); }} className="actionBtn" aria-label="Reset search">Reset</button>
@@ -621,7 +711,7 @@ export default function BookingsPage() {
                 {calLoading && (
                   <div className="w-full h-8 animate-pulse rounded-lg bg-gradient-to-r from-indigo-100 via-purple-100 to-pink-100 mb-2" aria-label="Loading calendar" />
                 )}
-                <div className="calendarWrapper">
+                <div className="calendarWrapper" suppressHydrationWarning>
                   <RBCalendar
                     localizer={localizer}
                     events={events}
@@ -633,7 +723,9 @@ export default function BookingsPage() {
                     views={['month','week','day']}
                     popup
                     eventPropGetter={eventStyleGetter}
-                    suppressHydrationWarning
+                    selectable
+                    onSelectEvent={(event: any) => openViewBookingModal(event.id)}
+                    onSelectSlot={(slotInfo: any) => openDayBookings(slotInfo.start)}
                   />
                 </div>
                 {/* Stats below the calendar */}
@@ -695,7 +787,7 @@ export default function BookingsPage() {
                       </thead>
                       <tbody>
                         {page?.data?.map(b => (
-                          <tr key={b.id}>
+                          <tr key={b.id} onClick={() => openViewBookingModal(b)} className="cursor-pointer hover:bg-gray-50">
                             <td className="py-1 pr-2 font-mono text-xs text-gray-600">#{b.id}</td>
                             <td className="py-1 pr-2">{b.customer?.name || `#${b.customer_id}`}</td>
                             <td className="py-1 pr-2">{b.package?.name || '-'}</td>
@@ -760,9 +852,9 @@ export default function BookingsPage() {
                             <td className="py-1 pr-2">{b.status}</td>
                             <td className="py-1 pr-2">
                               <div className="flex gap-2">
-                                <button onClick={() => startEdit(b)} className="btn-secondary">Edit</button>
-                                <button onClick={() => openPaymentModal(b)} className="btn-secondary flex items-center gap-1"><DollarSign className="w-4 h-4" /> Payments</button>
-                                <button onClick={() => openDeleteModal(b)} className="btn-danger flex items-center gap-1"><Trash2 className="w-4 h-4" /> Delete</button>
+                                <button onClick={(e) => { e.stopPropagation(); startEdit(b); }} className="btn-secondary">Edit</button>
+                                <button onClick={(e) => { e.stopPropagation(); openPaymentModal(b); }} className="btn-secondary flex items-center gap-1"><DollarSign className="w-4 h-4" /> Payments</button>
+                                <button onClick={(e) => { e.stopPropagation(); openDeleteModal(b); }} className="btn-danger flex items-center gap-1"><Trash2 className="w-4 h-4" /> Delete</button>
                               </div>
                             </td>
                           </tr>
@@ -778,6 +870,179 @@ export default function BookingsPage() {
                 )}
               </div>
             </div>
+            {showViewModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={closeViewBookingModal}>
+                <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto z-[100] relative" tabIndex={-1} style={{ pointerEvents: 'auto' }} onClick={(e) => e.stopPropagation()}>
+                  <div className="p-8 border-2 border-gray-100 bg-gradient-to-br from-white via-blue-50/30 to-purple-50/30">
+                    <div className="flex items-center gap-4 mb-6">
+                      <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
+                        <span className="text-white text-xl">📄</span>
+                      </div>
+                      <div>
+                        <h3 className="text-2xl font-bold text-gray-900">Booking Details</h3>
+                        <p className="text-gray-600">View full details for this booking</p>
+                      </div>
+                      <button className="absolute right-6 top-6 text-gray-500 hover:text-gray-700" onClick={closeViewBookingModal} aria-label="Close"> <X className="w-6 h-6" /> </button>
+                    </div>
+
+                    {viewError && <div className="mb-4 bg-red-50 border-2 border-red-200 text-red-800 px-6 py-3 rounded-xl">{viewError}</div>}
+                    {viewLoading ? (
+                      <div className="px-6 py-8 text-center text-sm text-gray-500">
+                        <div className="flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mr-2"></div>
+                          Loading booking...
+                        </div>
+                      </div>
+                    ) : viewBooking ? (
+                      <div className="space-y-6 px-1">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <div className="text-sm text-gray-500">Booking ID</div>
+                            <div className="font-mono">#{viewBooking.id}</div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-gray-500">Status</div>
+                            <div className="font-medium">{viewBooking.status}</div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-gray-500">Customer</div>
+                            <div className="font-medium">{viewBooking.customer?.name || `#${viewBooking.customer_id}`}</div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-gray-500">Package</div>
+                            <div>{viewBooking.package?.name || '-'}</div>
+                          </div>
+                          <div className="md:col-span-2">
+                            <div className="text-sm text-gray-500">Location</div>
+                            <div>{viewBooking.location || '-'}</div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="text-lg font-semibold mb-2">Schedule</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                            <div>
+                              <div className="text-gray-500">Wedding</div>
+                              <div>{viewBooking.wedding_shoot_date ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(new Date(viewBooking.wedding_shoot_date)) : '-'}</div>
+                              <div className="text-xs text-gray-500">{viewBooking.wedding_shoot_location || '-'}</div>
+                            </div>
+                            <div>
+                              <div className="text-gray-500">Preshoot</div>
+                              <div>{viewBooking.preshoot_date ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(new Date(viewBooking.preshoot_date)) : '-'}</div>
+                              <div className="text-xs text-gray-500">{viewBooking.preshoot_location || '-'}</div>
+                            </div>
+                            <div>
+                              <div className="text-gray-500">Homecoming</div>
+                              <div>{viewBooking.homecoming_date ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(new Date(viewBooking.homecoming_date)) : '-'}</div>
+                              <div className="text-xs text-gray-500">{viewBooking.homecoming_location || '-'}</div>
+                            </div>
+                            <div>
+                              <div className="text-gray-500">Function</div>
+                              <div>{viewBooking.function_date ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(new Date(viewBooking.function_date)) : '-'}</div>
+                              <div className="text-xs text-gray-500">{viewBooking.function_location || '-'}</div>
+                            </div>
+                            <div>
+                              <div className="text-gray-500">Event Covering</div>
+                              <div>{viewBooking.event_covering_date ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(new Date(viewBooking.event_covering_date)) : '-'}</div>
+                              <div className="text-xs text-gray-500">{viewBooking.event_covering_location || '-'}</div>
+                            </div>
+                            <div>
+                              <div className="text-gray-500">Custom Plan</div>
+                              <div>{viewBooking.custom_plan_date ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(new Date(viewBooking.custom_plan_date)) : '-'}</div>
+                              <div className="text-xs text-gray-500">{viewBooking.custom_plan_location || '-'}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="text-lg font-semibold mb-2">Items</h4>
+                          {viewBooking.bookingItems && viewBooking.bookingItems.length > 0 ? (
+                            <div className="overflow-x-auto">
+                              <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-100">
+                                  <tr>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Qty</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                  {viewBooking.bookingItems.map((pi: any) => (
+                                    <tr key={pi.id}>
+                                      <td className="px-4 py-2 text-sm">{pi.item?.code || '-'}</td>
+                                      <td className="px-4 py-2 text-sm">{pi.item?.name || '-'}</td>
+                                      <td className="px-4 py-2 text-sm">{pi.quantity}</td>
+                                      <td className="px-4 py-2 text-sm">{formatCurrency(Number(pi.unit_price || pi.item?.price || 0))}</td>
+                                      <td className="px-4 py-2 text-sm">{formatCurrency(Number(pi.subamount || (pi.unit_price || pi.item?.price || 0) * (pi.quantity || 0)))}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-gray-600">No items added.</p>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
+                            <div className="text-sm text-gray-600">Advance Payment</div>
+                            <div className="text-xl font-semibold text-green-700">{viewBooking.advance_payment ? formatCurrency(Number(viewBooking.advance_payment)) : '-'}</div>
+                          </div>
+                          <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                            <div className="text-sm text-gray-600">Transport Charges</div>
+                            <div className="text-xl font-semibold text-blue-700">{viewBooking.transport_charges ? formatCurrency(Number(viewBooking.transport_charges)) : '-'}</div>
+                          </div>
+                          <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
+                            <div className="text-sm text-gray-600">Status</div>
+                            <div className="text-xl font-semibold text-indigo-700">{viewBooking.status}</div>
+                          </div>
+                        </div>
+
+                        {/* Payment Summary */}
+                        <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                          <h4 className="text-lg font-semibold mb-2">Payment Summary</h4>
+                          {(() => {
+                            const itemsTotal = (viewBooking.bookingItems || []).reduce((sum: number, pi: any) => {
+                              const unit = Number(pi.unit_price ?? pi.item?.price ?? 0);
+                              const qty = Number(pi.quantity ?? 0);
+                              const sub = Number(pi.subamount ?? unit * qty);
+                              return sum + sub;
+                            }, 0);
+                            const transport = Number(viewBooking.transport_charges ?? 0);
+                            const totalPaid = (viewPayments || []).filter((p: any) => p.status === 'paid').reduce((sum: number, p: any) => sum + Number(p.amount ?? 0), 0);
+                            const totalDue = itemsTotal + transport - totalPaid;
+                            return (
+                              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                <div className="p-3 bg-white border border-gray-200 rounded-lg">
+                                  <div className="text-xs text-gray-500">Items Total</div>
+                                  <div className="text-base font-semibold">{formatCurrency(itemsTotal)}</div>
+                                </div>
+                                <div className="p-3 bg-white border border-gray-200 rounded-lg">
+                                  <div className="text-xs text-gray-500">Transport</div>
+                                  <div className="text-base font-semibold">{formatCurrency(transport)}</div>
+                                </div>
+                                <div className="p-3 bg-white border border-gray-200 rounded-lg">
+                                  <div className="text-xs text-gray-500">Total Paid</div>
+                                  <div className="text-base font-semibold text-green-700">{formatCurrency(totalPaid)}</div>
+                                </div>
+                                <div className="p-3 bg-white border border-gray-200 rounded-lg">
+                                  <div className="text-xs text-gray-500">Total Due</div>
+                                  <div className="text-base font-semibold text-indigo-700">{formatCurrency(Math.max(totalDue, 0))}</div>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                          <p className="text-xs text-gray-500 mt-2">Total Due = Items + Transport − Total Paid</p>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            )}
             {createModalOpen && (
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setCreateModalOpen(false)}>
                 <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto z-[100] relative" tabIndex={-1} style={{ pointerEvents: 'auto' }} onClick={(e) => e.stopPropagation()}>
@@ -999,17 +1264,6 @@ export default function BookingsPage() {
                           onChange={(e) => {
                             const newDate = e.target.value;
                             setForm({ ...form, wedding_shoot_date: newDate });
-
-                            // Auto-suggest related dates if they're not already set
-                            if (newDate && (!form.preshoot_date || !form.homecoming_date)) {
-                              const suggestions = suggestRelatedDates(newDate);
-                              setForm(prev => ({
-                                ...prev,
-                                wedding_shoot_date: newDate,
-                                ...(!prev.preshoot_date ? { preshoot_date: suggestions.preshoot_date } : {}),
-                                ...(!prev.homecoming_date ? { homecoming_date: suggestions.homecoming_date } : {})
-                              }));
-                            }
                           }}
                         />
                        
@@ -1037,11 +1291,7 @@ export default function BookingsPage() {
                         <span className="w-3 h-3 bg-purple-500 rounded-full"></span>
                         Preshoot Day Booking
                       </span>
-                      {form.preshoot_date && (
-                        <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-medium">
-                          Auto-suggested
-                        </span>
-                      )}
+                      {/* Removed auto-suggest badge to avoid confusion */}
                     </div>
                     <div className="text-sm text-gray-600 mb-4">Pre-wedding shoot session</div>
                     <div className="space-y-4">
@@ -1085,11 +1335,7 @@ export default function BookingsPage() {
                         <span className="w-3 h-3 bg-orange-500 rounded-full"></span>
                         Home Coming Day Shoot Booking
                       </span>
-                      {form.homecoming_date && (
-                        <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full font-medium">
-                          Auto-suggested
-                        </span>
-                      )}
+                      {/* Removed auto-suggest badge to avoid confusion */}
                     </div>
                     <div className="text-gray-600 text-sm mb-4">Post-wedding homecoming photography</div>
                     <div className="space-y-4">
@@ -1677,6 +1923,43 @@ export default function BookingsPage() {
                         <span><strong className="capitalize">{key.replace(/_/g, ' ')}:</strong> {value}</span>
                       </li>
                     ))}
+                    {showDayModal && (
+                      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={closeDayBookings}>
+                        <div className="bg-white rounded-3xl shadow-2xl max-w-3xl w-full max-h-[80vh] overflow-y-auto z-[100] relative" tabIndex={-1} style={{ pointerEvents: 'auto' }} onClick={(e) => e.stopPropagation()}>
+                          <div className="p-6 border-2 border-gray-100 bg-gradient-to-br from-white via-blue-50/30 to-purple-50/30">
+                            <div className="flex items-center gap-4 mb-4">
+                              <div className="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
+                                <span className="text-white text-lg">📅</span>
+                              </div>
+                              <div>
+                                <h3 className="text-xl font-bold text-gray-900">Bookings on {dayDate ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: '2-digit', timeZone: 'UTC' }).format(dayDate) : ''}</h3>
+                                <p className="text-gray-600">{dayBookings.length} booking(s) scheduled</p>
+                              </div>
+                              <button className="absolute right-6 top-6 text-gray-500 hover:text-gray-700" onClick={closeDayBookings} aria-label="Close"> <X className="w-6 h-6" /> </button>
+                            </div>
+
+                            {dayBookings.length === 0 ? (
+                              <div className="px-6 py-10 text-center text-sm text-gray-500">No bookings on this day.</div>
+                            ) : (
+                              <ul className="divide-y divide-gray-200">
+                                {dayBookings.map((ev: any) => (
+                                  <li key={ev.id} className="flex items-center justify-between py-3">
+                                    <div>
+                                      <div className="font-medium text-gray-900">{ev.title || `Booking #${ev.id}`}</div>
+                                      <div className="text-sm text-gray-500">{new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit' }).format(new Date(ev.start))} - {new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit' }).format(new Date(ev.end))}</div>
+                                      {ev.resource?.status && <div className="text-xs text-gray-500">Status: {ev.resource.status}</div>}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <button className="btn-secondary" onClick={() => openViewBookingModal(ev.id)}>View Details</button>
+                                    </div>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </ul>
                 </div>
               )}

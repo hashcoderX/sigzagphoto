@@ -42,6 +42,9 @@ export default function CustomersPage() {
   const [editForm, setEditForm] = useState<Partial<Customer>>({});
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
   const [q, setQ] = useState("");
+  // View customer modal state
+  const [viewCustomerModalOpen, setViewCustomerModalOpen] = useState(false);
+  const [viewCustomer, setViewCustomer] = useState<Customer | null>(null);
 
   useEffect(() => {
     const t = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
@@ -180,6 +183,25 @@ export default function CustomersPage() {
     }
   };
 
+  const openViewCustomerModal = async (c: Customer) => {
+    if (!token) return;
+    try {
+      // Fetch full customer details in case list view is partial
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/customers/${c.id}`, {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+        cache: 'no-cache'
+      });
+      let data: any = null;
+      try { data = await res.json(); } catch { data = c; }
+      const full = res.ok && data ? data : c;
+      setViewCustomer(full);
+      setViewCustomerModalOpen(true);
+    } catch {
+      setViewCustomer(c);
+      setViewCustomerModalOpen(true);
+    }
+  };
+
   return (
     <main>
       <Navbar />
@@ -277,7 +299,7 @@ export default function CustomersPage() {
                   </thead>
                   <tbody>
                     {page?.data?.map((c) => (
-                      <tr key={c.id}>
+                      <tr key={c.id} onClick={() => openViewCustomerModal(c)} className="cursor-pointer hover:bg-gray-50">
                         <td className="py-2 pr-4">
                           {editId === c.id ? (
                             <div>
@@ -335,7 +357,7 @@ export default function CustomersPage() {
                               <button onClick={cancelEdit} className="btn-secondary flex items-center gap-1"><X className="w-4 h-4" /> Cancel</button>
                             </div>
                           ) : (
-                            <div className="flex gap-2">
+                            <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                               <button onClick={() => startEdit(c)} className="btn-secondary">Edit</button>
                               <button onClick={() => remove(c.id)} className="btn-danger flex items-center gap-1"><Trash2 className="w-4 h-4" /> Delete</button>
                             </div>
@@ -356,6 +378,66 @@ export default function CustomersPage() {
         </div>
       </section>
       <Footer />
+
+      {/* View Customer Modal */}
+      {viewCustomerModalOpen && viewCustomer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => { setViewCustomerModalOpen(false); setViewCustomer(null); }} />
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden animate-in fade-in-0 zoom-in-95 duration-200">
+            <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 px-6 py-4 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">👤</div>
+                <div>
+                  <h3 className="text-xl font-bold">Customer Details</h3>
+                  <p className="text-indigo-100 text-xs">Profile overview</p>
+                </div>
+              </div>
+              <button onClick={() => { setViewCustomerModalOpen(false); setViewCustomer(null); }} className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center transition-all">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="px-6 py-5 overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <div className="text-sm text-gray-500">Name</div>
+                  <div className="text-base font-semibold text-gray-900">{viewCustomer.name}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500">Company</div>
+                  <div className="text-base font-semibold text-gray-900">{viewCustomer.company || '-'}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500">Email</div>
+                  <div className="text-base font-semibold text-gray-900">{viewCustomer.email || '-'}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500">Phone</div>
+                  <div className="text-base font-semibold text-gray-900">{viewCustomer.phone || '-'}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500">WhatsApp</div>
+                  <div className="text-base font-semibold text-gray-900">{viewCustomer.whatsapp || '-'}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500">NIC / Driving License</div>
+                  <div className="text-base font-semibold text-gray-900">{viewCustomer.nic_or_dl || '-'}</div>
+                </div>
+                <div className="md:col-span-2">
+                  <div className="text-sm text-gray-500">Address</div>
+                  <div className="text-base font-semibold text-gray-900">{viewCustomer.address || '-'}</div>
+                </div>
+                <div className="md:col-span-2">
+                  <div className="text-sm text-gray-500">Notes</div>
+                  <div className="text-base font-semibold text-gray-900 whitespace-pre-line">{viewCustomer.notes || '-'}</div>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex justify-end">
+              <button onClick={() => { setViewCustomerModalOpen(false); setViewCustomer(null); }} className="px-6 py-2 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style jsx global>{`
         .input { width: 100%; padding: 0.5rem 0.75rem; border: 2px solid #e5e7eb; border-radius: 0.75rem; }

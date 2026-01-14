@@ -192,6 +192,12 @@ export default function JobCardsPage() {
   const [expenseFormReceipt, setExpenseFormReceipt] = useState<File | null>(null);
   const [expenseFormError, setExpenseFormError] = useState<string | null>(null);
   const [expenseFormLoading, setExpenseFormLoading] = useState(false);
+  // View job card modal state
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewJobCard, setViewJobCard] = useState<JobCard | null>(null);
+  const [viewLoading, setViewLoading] = useState<boolean>(false);
+  const [viewError, setViewError] = useState<string | null>(null);
+  const [viewPayments, setViewPayments] = useState<any[]>([]);
 
   const loadInvoiceTemplates = async (tokenParam?: string) => {
     const authToken = tokenParam || token;
@@ -233,6 +239,46 @@ export default function JobCardsPage() {
     loadInvoiceTemplates(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const openViewJobCardModal = async (jobOrId: JobCard | number) => {
+    if (!token) return;
+    setViewError(null);
+    setViewLoading(true);
+    try {
+      const id = typeof jobOrId === 'number' ? jobOrId : jobOrId.id;
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${id}`, {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+        cache: 'no-cache'
+      });
+      if (!res.ok) throw new Error('Failed to load job card details');
+      const data = await res.json();
+      setViewJobCard(data);
+      // Fetch payments for summary
+      try {
+        const payRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/job-cards/${id}/payments`, {
+          headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+          cache: 'no-cache'
+        });
+        if (payRes.ok) {
+          const payData = await payRes.json();
+          setViewPayments(Array.isArray(payData) ? payData : (payData?.data || []));
+        }
+      } catch {}
+      setShowViewModal(true);
+    } catch (e: any) {
+      setViewError(e?.message || 'Failed to load job card details');
+    } finally {
+      setViewLoading(false);
+    }
+  };
+
+  const closeViewJobCardModal = () => {
+    setShowViewModal(false);
+    setViewJobCard(null);
+    setViewPayments([]);
+    setViewError(null);
+    setViewLoading(false);
+  };
 
   const fetchBookings = async (t: string) => {
     try { const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/bookings?per_page=100`, { headers: { Accept: 'application/json', Authorization: `Bearer ${t}` } }); if (!res.ok) return; const data = await res.json(); setBookings(data.data || []); } catch { }
@@ -1133,6 +1179,146 @@ export default function JobCardsPage() {
                 </div>
               </div>
             )}
+            {/* View Job Card Modal */}
+            {showViewModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={closeViewJobCardModal}>
+                <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto z-[100] relative" tabIndex={-1} style={{ pointerEvents: 'auto' }} onClick={(e) => e.stopPropagation()}>
+                  <div className="p-8 border-2 border-gray-100 bg-gradient-to-br from-white via-blue-50/30 to-purple-50/30">
+                    <div className="flex items-center gap-4 mb-6">
+                      <div className="w-12 h-12 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
+                        <span className="text-white text-xl">🧾</span>
+                      </div>
+                      <div>
+                        <h3 className="text-2xl font-bold text-gray-900">Job Card Details</h3>
+                        <p className="text-gray-600">View full details for this job card</p>
+                      </div>
+                      <button className="absolute right-6 top-6 text-gray-500 hover:text-gray-700" onClick={closeViewJobCardModal} aria-label="Close"> <X className="w-6 h-6" /> </button>
+                    </div>
+
+                    {viewError && <div className="mb-4 bg-red-50 border-2 border-red-200 text-red-800 px-6 py-3 rounded-xl">{viewError}</div>}
+                    {viewLoading ? (
+                      <div className="px-6 py-8 text-center text-sm text-gray-500">
+                        <div className="flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mr-2"></div>
+                          Loading job card...
+                        </div>
+                      </div>
+                    ) : viewJobCard ? (
+                      <div className="space-y-6 px-1">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <div className="text-sm text-gray-500">Job Card ID</div>
+                            <div className="font-mono">#{viewJobCard.id}</div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-gray-500">Status</div>
+                            <div className="font-medium">{viewJobCard.status}</div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-gray-500">Title</div>
+                            <div className="font-medium">{viewJobCard.title}</div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-gray-500">Booking</div>
+                            <div className="font-medium">{viewJobCard.booking?.customer?.name || `#${viewJobCard.booking_id}`}</div>
+                          </div>
+                          <div className="md:col-span-2">
+                            <div className="text-sm text-gray-500">Description</div>
+                            <div>{viewJobCard.description || '-'}</div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="text-lg font-semibold mb-2">Items</h4>
+                          {viewJobCard.items && viewJobCard.items.length > 0 ? (
+                            <div className="overflow-x-auto">
+                              <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-100">
+                                  <tr>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Service</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Qty</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit Amount</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                  {viewJobCard.items.map((li: any, idx: number) => (
+                                    <tr key={li.id || idx}>
+                                      <td className="px-4 py-2 text-sm">{li.service}</td>
+                                      <td className="px-4 py-2 text-sm">{li.qty}</td>
+                                      <td className="px-4 py-2 text-sm">{formatCurrency(Number(li.amount || 0))}</td>
+                                      <td className="px-4 py-2 text-sm">{formatCurrency(Number(li.subamount || li.sub_amount || (Number(li.amount || 0) * Number(li.qty || 0))))}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-gray-600">No items.</p>
+                          )}
+                        </div>
+
+                        {viewJobCard.tasks && viewJobCard.tasks.length > 0 && (
+                          <div>
+                            <h4 className="text-lg font-semibold mb-2">Tasks</h4>
+                            <ul className="list-disc pl-5 space-y-1">
+                              {viewJobCard.tasks.map((t: any, idx: number) => (
+                                <li key={t.id || idx} className="text-sm">
+                                  <span className="font-medium">{t.title}</span>{t.completed ? ' — Completed' : ''}
+                                  {t.description ? <span className="text-gray-500"> — {t.description}</span> : null}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Payment Summary */}
+                        <div className="mt-2 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                          <h4 className="text-lg font-semibold mb-2">Payment Summary</h4>
+                          {(() => {
+                            const itemsTotal = (viewJobCard.items || []).reduce((sum: number, li: any) => {
+                              const unit = Number(li.amount || 0);
+                              const qty = Number(li.qty || 0);
+                              const sub = Number(li.subamount || li.sub_amount || unit * qty);
+                              return sum + sub;
+                            }, 0);
+                            const confirmed = Number(viewJobCard.confirmed_amount || 0);
+                            const transport = Number((viewJobCard as any).transport_charges || 0);
+                            const totalPaid = (viewPayments || []).reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+                            const totalDue = Math.max(0, confirmed + transport - totalPaid);
+                            return (
+                              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                <div className="p-3 bg-white border border-gray-200 rounded-lg">
+                                  <div className="text-xs text-gray-500">Items Total</div>
+                                  <div className="text-base font-semibold">{formatCurrency(itemsTotal)}</div>
+                                </div>
+                                <div className="p-3 bg-white border border-gray-200 rounded-lg">
+                                  <div className="text-xs text-gray-500">Confirmed Amount</div>
+                                  <div className="text-base font-semibold">{formatCurrency(confirmed)}</div>
+                                </div>
+                                <div className="p-3 bg-white border border-gray-200 rounded-lg">
+                                  <div className="text-xs text-gray-500">Transport</div>
+                                  <div className="text-base font-semibold">{formatCurrency(transport)}</div>
+                                </div>
+                                <div className="p-3 bg-white border border-gray-200 rounded-lg">
+                                  <div className="text-xs text-gray-500">Total Paid</div>
+                                  <div className="text-base font-semibold text-green-700">{formatCurrency(totalPaid)}</div>
+                                </div>
+                                <div className="p-3 bg-white border border-gray-200 rounded-lg md:col-span-2">
+                                  <div className="text-xs text-gray-500">Total Due</div>
+                                  <div className="text-base font-semibold text-indigo-700">{formatCurrency(totalDue)}</div>
+                                  <p className="text-xs text-gray-500 mt-1">Due = Confirmed + Transport − Total Paid</p>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {successMessage && <div className="mb-4 bg-green-50 border-2 border-green-200 text-green-800 px-6 py-3 rounded-xl">{successMessage}</div>}
             {/* Advance collection modal */}
@@ -1196,7 +1382,7 @@ export default function JobCardsPage() {
                           {rows.length === 0 ? (
                             <tr><td className="py-4 pr-4 text-gray-500" colSpan={9}>No records.</td></tr>
                           ) : rows.map(it => (
-                            <tr key={it.id}>
+                            <tr key={it.id} onClick={() => openViewJobCardModal(it)} className="cursor-pointer hover:bg-gray-50">
                               <td className="py-2 pr-4">{
                                 it.booking?.customer?.name || it.booking?.customer_id
                                   ? `${it.booking?.customer?.name || `#${it.booking?.customer_id}`}${it.booking?.location ? ` @ ${it.booking?.location}` : ''}`
@@ -1257,16 +1443,16 @@ export default function JobCardsPage() {
                               }</td>
                               <td className="py-2 pr-4">
                                 <div className="flex gap-2">
-                                  <button onClick={() => openTaskModal(it)} className="btn-secondary" title="Tasks">
+                                  <button onClick={(e) => { e.stopPropagation(); openTaskModal(it); }} className="btn-secondary" title="Tasks">
                                     <CheckSquare className="w-4 h-4" />
                                   </button>
-                                  <button onClick={() => openPaymentModal(it)} className="btn-secondary" title="View Payment History">
+                                  <button onClick={(e) => { e.stopPropagation(); openPaymentModal(it); }} className="btn-secondary" title="View Payment History">
                                     <Receipt className="w-4 h-4" />
                                   </button>
-                                  <button onClick={() => openExpensesModal(it)} className="btn-secondary" title="View Expenses">
+                                  <button onClick={(e) => { e.stopPropagation(); openExpensesModal(it); }} className="btn-secondary" title="View Expenses">
                                     <DollarSign className="w-4 h-4" />
                                   </button>
-                                  <button onClick={() => openInvoiceModal(it)} className="btn-secondary" title="Invoice">
+                                  <button onClick={(e) => { e.stopPropagation(); openInvoiceModal(it); }} className="btn-secondary" title="Invoice">
                                     <FileText className="w-4 h-4" />
                                   </button>
                                   {(() => {
@@ -1274,14 +1460,14 @@ export default function JobCardsPage() {
                                     const totalPaid = typeof (it as any).total_paid === 'number' ? Number((it as any).total_paid) : 0;
                                     const showCollectAdvance = adv <= 0 && totalPaid <= 0;
                                     return showCollectAdvance ? (
-                                      <button onClick={() => openAdvanceModal(it)} className="btn-secondary">Collect Advance</button>
+                                      <button onClick={(e) => { e.stopPropagation(); openAdvanceModal(it); }} className="btn-secondary">Collect Advance</button>
                                     ) : null;
                                   })()}
                                   {Number((it as any).transport_charges ?? 0) > 0 && (
                                     (it as any).transport_paid ? (
                                       <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium">Transport Paid</span>
                                     ) : (
-                                      <button onClick={() => openTransportModal(it)} className="btn-secondary bg-blue-50 text-blue-700 hover:bg-blue-100">Collect Transport</button>
+                                      <button onClick={(e) => { e.stopPropagation(); openTransportModal(it); }} className="btn-secondary bg-blue-50 text-blue-700 hover:bg-blue-100">Collect Transport</button>
                                     )
                                   )}
                                 </div>
@@ -1316,7 +1502,7 @@ export default function JobCardsPage() {
                             {progressJobs.length === 0 ? (
                               <tr><td className="py-4 pr-4 text-gray-500" colSpan={9}>No records.</td></tr>
                             ) : progressJobs.map(it => (
-                              <tr key={it.id}>
+                              <tr key={it.id} onClick={() => openViewJobCardModal(it)} className="cursor-pointer hover:bg-gray-50">
                                 <td className="py-2 pr-4">{
                                   it.booking?.customer?.name || it.booking?.customer_id
                                     ? `${it.booking?.customer?.name || `#${it.booking?.customer_id}`}${it.booking?.location ? ` @ ${it.booking?.location}` : ''}`
@@ -1377,23 +1563,23 @@ export default function JobCardsPage() {
                                 }</td>
                                 <td className="py-2 pr-4">
                                   <div className="flex gap-2">
-                                    <button onClick={() => openTaskModal(it)} className="btn-secondary" title="Tasks">
+                                    <button onClick={(e) => { e.stopPropagation(); openTaskModal(it); }} className="btn-secondary" title="Tasks">
                                       <CheckSquare className="w-4 h-4" />
                                     </button>
-                                    <button onClick={() => openPaymentModal(it)} className="btn-secondary" title="View Payment History">
+                                    <button onClick={(e) => { e.stopPropagation(); openPaymentModal(it); }} className="btn-secondary" title="View Payment History">
                                       <Receipt className="w-4 h-4" />
                                     </button>
-                                    <button onClick={() => openExpensesModal(it)} className="btn-secondary" title="View Expenses">
+                                    <button onClick={(e) => { e.stopPropagation(); openExpensesModal(it); }} className="btn-secondary" title="View Expenses">
                                       <DollarSign className="w-4 h-4" />
                                     </button>
-                                    <button onClick={() => openInvoiceModal(it)} className="btn-secondary" title="Invoice">
+                                    <button onClick={(e) => { e.stopPropagation(); openInvoiceModal(it); }} className="btn-secondary" title="Invoice">
                                       <FileText className="w-4 h-4" />
                                     </button>
                                     {Number((it as any).transport_charges ?? 0) > 0 && (
                                       (it as any).transport_paid ? (
                                         <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium" title="Transport Paid">✓ Transport</span>
                                       ) : (
-                                        <button onClick={() => openTransportModal(it)} className="btn-secondary bg-blue-50 text-blue-700 hover:bg-blue-100" title="Collect Transport">
+                                        <button onClick={(e) => { e.stopPropagation(); openTransportModal(it); }} className="btn-secondary bg-blue-50 text-blue-700 hover:bg-blue-100" title="Collect Transport">
                                           <Truck className="w-4 h-4" />
                                         </button>
                                       )

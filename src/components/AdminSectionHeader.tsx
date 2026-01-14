@@ -31,9 +31,10 @@ export default function AdminSectionHeader({
       role="region"
       aria-labelledby={headingId}
       className={`relative mb-8 ${className}`}
+      suppressHydrationWarning
     >
       <div className="group rounded-3xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-[2px] shadow-xl focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-300">
-        <div className="rounded-3xl bg-white/10 backdrop-blur-xl px-6 py-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+        <div className="rounded-3xl bg-white/10 backdrop-blur-xl px-6 py-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6" suppressHydrationWarning>
           <div className="flex items-center gap-4 min-w-0">
             <button
               type="button"

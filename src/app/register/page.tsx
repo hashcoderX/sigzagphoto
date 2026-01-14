@@ -391,7 +391,7 @@ export default function RegisterPage() {
             {/* Trial feature removed */}
 
             {/* Registration Form */}
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-6" suppressHydrationWarning>
               {userType !== 'buyer' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Logo Upload */}

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { motion } from "framer-motion";
-import { Camera, DollarSign, CalendarCheck, Wallet, Upload, Package, Users, ClipboardList, BarChart3 } from "lucide-react";
+import { Camera, DollarSign, CalendarCheck, Wallet, Upload, Package, Users, ClipboardList, BarChart3, Settings } from "lucide-react";
 import Link from "next/link";
 import { isFreeExpired } from "@/lib/access";
 
@@ -258,6 +258,13 @@ export default function AdminDashboardPage() {
                                             <div>
                                                 <div className="text-[#1F2937] font-medium">Accounting</div>
                                                 <div className="text-xs text-gray-600">Income and expenses</div>
+                                            </div>
+                                        </Link>
+                                        <Link href="/dashboard/admin/settings" className="flex items-center gap-3 bg-white border border-[#E4E7EB] rounded-xl shadow-[0_2px_4px_rgba(0,0,0,0.05)] p-4">
+                                            <Settings className="w-5 h-5 text-gray-700" />
+                                            <div>
+                                                <div className="text-[#1F2937] font-medium">Settings</div>
+                                                <div className="text-xs text-gray-600">Templates, users, profile</div>
                                             </div>
                                         </Link>
                                     </div>
