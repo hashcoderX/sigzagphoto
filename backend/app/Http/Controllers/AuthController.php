@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rules\Password;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Http;
 
 class AuthController extends Controller
 {
@@ -218,7 +219,7 @@ class AuthController extends Controller
             $user->cover_path = $path;
         }
 
-        if ($user->isDirty()) { $user->save(); }
+        $user->save();
 
         return response()->json([
             'id' => $user->id,
@@ -236,5 +237,155 @@ class AuthController extends Controller
             'cover_url' => $user->cover_path ? asset('storage/'.$user->cover_path) : null,
             'premium_package' => (bool)$user->premium_package,
         ]);
+    }
+
+    /**
+     * Sign up / sign in using a Google ID token provided by the frontend
+     */
+    public function loginWithGoogle(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'id_token' => ['required','string'],
+            'role' => ['nullable','string','in:photographer,business,buyer'],
+        ]);
+
+        $idToken = $validated['id_token'];
+        $expectedAud = env('GOOGLE_CLIENT_ID');
+        if (!$expectedAud) {
+            return response()->json(['status' => 'error', 'message' => 'Google OAuth not configured'], 500);
+        }
+
+        try {
+            // Validate ID token via Google tokeninfo endpoint
+            $resp = Http::acceptJson()->get('https://oauth2.googleapis.com/tokeninfo', ['id_token' => $idToken]);
+            if (!$resp->ok()) {
+                return response()->json(['status' => 'error', 'message' => 'Invalid Google token'], 422);
+            }
+            $data = $resp->json();
+            $aud = $data['aud'] ?? null;
+            $email = $data['email'] ?? null;
+            $emailVerified = filter_var($data['email_verified'] ?? false, FILTER_VALIDATE_BOOL);
+            $name = $data['name'] ?? ($data['given_name'] ?? 'Google User');
+
+            if ($aud !== $expectedAud || !$email) {
+                return response()->json(['status' => 'error', 'message' => 'Token audience mismatch or missing email'], 422);
+            }
+            if (!$emailVerified) {
+                return response()->json(['status' => 'error', 'message' => 'Google email not verified'], 422);
+            }
+
+            // Find or create user by email
+            /** @var User|null $user */
+            $user = User::where('email', $email)->first();
+            if (!$user) {
+                $role = $validated['role'] ?? 'buyer';
+                $user = User::create([
+                    'name' => $name,
+                    'email' => $email,
+                    // random password, never used; hashed by casts
+                    'password' => bin2hex(random_bytes(16)),
+                    'role' => $role,
+                    'email_verified_at' => now(),
+                ]);
+            }
+
+            $token = $user->createToken('api')->plainTextToken;
+            return response()->json([
+                'status' => 'success',
+                'token' => $token,
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $user->role,
+                    'premium_package' => (bool) $user->premium_package,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Google OAuth error', ['message' => $e->getMessage()]);
+            return response()->json(['status' => 'error', 'message' => 'Google sign-in failed'], 500);
+        }
+    }
+
+    /**
+     * Sign up / sign in using a Facebook access token provided by the frontend
+     */
+    public function loginWithFacebook(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'access_token' => ['required','string'],
+            'role' => ['nullable','string','in:photographer,business,buyer'],
+        ]);
+
+        $accessToken = $validated['access_token'];
+        $appId = env('FACEBOOK_APP_ID');
+        $appSecret = env('FACEBOOK_APP_SECRET');
+        if (!$appId || !$appSecret) {
+            return response()->json(['status' => 'error', 'message' => 'Facebook OAuth not configured'], 500);
+        }
+
+        try {
+            // Verify token via Facebook debug_token
+            $appAccessToken = $appId.'|'.$appSecret;
+            $debugResp = Http::asForm()->get('https://graph.facebook.com/debug_token', [
+                'input_token' => $accessToken,
+                'access_token' => $appAccessToken,
+            ]);
+            if (!$debugResp->ok()) {
+                return response()->json(['status' => 'error', 'message' => 'Invalid Facebook token'], 422);
+            }
+            $debug = $debugResp->json('data') ?? [];
+            $isValid = (bool)($debug['is_valid'] ?? false);
+            $appIdFromToken = $debug['app_id'] ?? null;
+            $userId = $debug['user_id'] ?? null;
+            if (!$isValid || $appIdFromToken !== $appId || !$userId) {
+                return response()->json(['status' => 'error', 'message' => 'Token validation failed'], 422);
+            }
+
+            // Fetch user profile to get email and name
+            $profileResp = Http::get('https://graph.facebook.com/v17.0/me', [
+                'fields' => 'id,name,email',
+                'access_token' => $accessToken,
+            ]);
+            if (!$profileResp->ok()) {
+                return response()->json(['status' => 'error', 'message' => 'Unable to fetch Facebook profile'], 422);
+            }
+            $profile = $profileResp->json();
+            $email = $profile['email'] ?? null;
+            $name = $profile['name'] ?? 'Facebook User';
+
+            if (!$email) {
+                return response()->json(['status' => 'error', 'message' => 'Facebook account has no email'], 422);
+            }
+
+            /** @var User|null $user */
+            $user = User::where('email', $email)->first();
+            if (!$user) {
+                $role = $validated['role'] ?? 'buyer';
+                $user = User::create([
+                    'name' => $name,
+                    'email' => $email,
+                    'password' => bin2hex(random_bytes(16)),
+                    'role' => $role,
+                    'email_verified_at' => now(),
+                ]);
+            }
+
+            $token = $user->createToken('api')->plainTextToken;
+            return response()->json([
+                'status' => 'success',
+                'token' => $token,
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $user->role,
+                    'premium_package' => (bool) $user->premium_package,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Facebook OAuth error', ['message' => $e->getMessage()]);
+            return response()->json(['status' => 'error', 'message' => 'Facebook sign-in failed'], 500);
+        }
     }
 }

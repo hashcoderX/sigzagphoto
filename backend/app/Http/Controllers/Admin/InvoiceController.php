@@ -135,22 +135,6 @@ class InvoiceController extends Controller
         return $invoice->load(['customer','booking','items']);
     }
 
-    public function pdf(Request $request, Invoice $invoice)
-    {
-        $this->authorizeAccess($request, $invoice);
-        $invoice->load(['customer','booking','items','user']);
-        $brand = $invoice->user ?? $request->user();
-        // Compute paid on this invoice to ensure accurate due in PDF
-        $paidOnInvoice = \App\Models\Payment::where('invoice_id', $invoice->id)->where('status','paid')->sum('amount');
-        $html = view('pdf.invoice', [
-            'invoice' => $invoice,
-            'brand' => $brand,
-            'paidOnInvoice' => (float)$paidOnInvoice,
-        ])->render();
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html);
-        return $pdf->download(($invoice->number ?? 'invoice').'.pdf');
-    }
-
     public function destroy(Request $request, Invoice $invoice)
     {
         $this->authorizeAccess($request, $invoice);

@@ -20,6 +20,8 @@ class JobCard extends Model
         'confirmed_amount',
         'advance_payment',
         'discount',
+        'transport_charges',
+        'transport_paid',
     ];
 
     protected $casts = [
@@ -27,9 +29,13 @@ class JobCard extends Model
         'confirmed_amount' => 'decimal:2',
         'advance_payment' => 'decimal:2',
         'discount' => 'decimal:2',
+        'transport_charges' => 'decimal:2',
+        'transport_paid' => 'boolean',
     ];
 
     public function user() { return $this->belongsTo(User::class); }
     public function booking() { return $this->belongsTo(Booking::class); }
     public function items() { return $this->hasMany(JobCardItem::class); }
+    public function tasks() { return $this->hasMany(JobCardTask::class); }
+    public function expenses() { return $this->hasMany(JobCardExpense::class); }
 }

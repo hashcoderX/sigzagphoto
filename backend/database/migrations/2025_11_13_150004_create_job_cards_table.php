@@ -13,7 +13,7 @@ return new class extends Migration {
             $table->foreignId('booking_id')->constrained('bookings')->onDelete('cascade');
             $table->string('title');
             $table->text('description')->nullable();
-            $table->string('status')->default('open');
+            $table->string('status')->default('in_progress');
             $table->string('assigned_to')->nullable();
             $table->dateTime('due_date')->nullable();
             $table->timestamps();

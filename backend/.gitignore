@@ -1,4 +1,26 @@
-*.log
+# Laravel
+vendor/
+node_modules/
+storage/*.key
+storage/*.sqlite
+storage/logs/
+storage/framework/
+bootstrap/cache/
+
+# Env & config secrets
+.env
+.env.*
+
+# Builds
+public/build/
+
+# IDE/misc
+.DS_Store
+.idea/
+.vscode/
+
+# Composer lock can be kept; leave default
+# composer.lock*.log
 .DS_Store
 .env
 .env.backup

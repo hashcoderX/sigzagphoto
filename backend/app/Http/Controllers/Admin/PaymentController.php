@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
 use App\Models\Customer;
+use App\Models\JobCard;
 use App\Models\Payment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 
 class PaymentController extends Controller
 {
@@ -41,6 +44,9 @@ class PaymentController extends Controller
         if ($jobCardId = $request->query('job_card_id')) {
             $query->where('job_card_id', (int)$jobCardId);
         }
+        if ($paymentType = $request->query('payment_type')) {
+            $query->where('payment_type', $paymentType);
+        }
         return $query->paginate((int) $request->query('per_page', 10));
     }
 
@@ -58,6 +64,7 @@ class PaymentController extends Controller
             'reference' => ['nullable','string','max:255'],
             'status' => ['nullable','string','in:pending,paid,failed'],
             'paid_at' => ['nullable','date'],
+            'payment_type' => ['nullable','string','in:advance,transport'],
         ]);
         Customer::where('id', $data['customer_id'])->where('user_id', $user->id)->firstOrFail();
         if (!empty($data['booking_id'])) {
@@ -65,6 +72,15 @@ class PaymentController extends Controller
         }
         $data['user_id'] = $user->id;
     $payment = Payment::create($data);
+    
+    // Handle special payment types
+    if (!empty($data['payment_type']) && $data['payment_type'] === 'transport' && !empty($data['job_card_id'])) {
+        $jobCard = JobCard::where('id', $data['job_card_id'])->where('user_id', $user->id)->first();
+        if ($jobCard) {
+            $jobCard->update(['transport_paid' => true]);
+        }
+    }
+    
     $this->recalculateLinked($payment->id);
     return response()->json($payment->load(['customer','booking','invoice','jobCard']), 201);
     }
@@ -195,16 +211,39 @@ class PaymentController extends Controller
             'data' => $data,
             'currency' => $user->currency,
         ]);
+       
     }
 
+    /**
+     * Generate a PDF receipt for a payment.
+     */
     public function pdf(Request $request, Payment $payment)
     {
         $this->authorizeAccess($request, $payment);
-        $payment->load(['customer','booking','invoice.user','jobCard.user']);
-        $brand = $payment->jobCard?->user ?? $payment->invoice?->user ?? $request->user();
-        $html = view('pdf.payment', ['payment' => $payment, 'brand' => $brand])->render();
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html);
-        $name = 'payment-'.($payment->id).'.pdf';
-        return $pdf->download($name);
+
+        $payment->load(['customer', 'booking', 'jobCard']);
+
+        $brand = $request->user();
+
+        // Render the Blade view to HTML
+        $html = View::make('pdf.payment', [
+            'payment' => $payment,
+            'brand' => $brand,
+        ])->render();
+
+        // Configure Dompdf
+        $options = new Options();
+        $options->set('isRemoteEnabled', true);
+        $options->set('defaultFont', 'DejaVu Sans');
+        $dompdf = new Dompdf($options);
+        $dompdf->loadHtml($html);
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+
+        $filename = 'payment_receipt_'.$payment->id.'.pdf';
+        return response($dompdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="'.$filename.'"',
+        ]);
     }
 }
