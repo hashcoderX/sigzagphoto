@@ -63,8 +63,8 @@ export const metadata: Metadata = {
     images: ["/og-default.jpg"],
   },
   icons: {
-    icon: "/favicon.ico",
-    apple: "/apple-touch-icon.png",
+    icon: "/favicon.svg",
+    apple: "/favicon.svg",
   },
   manifest: "/site.webmanifest",
 };
@@ -94,7 +94,7 @@ export default function RootLayout({
             "@type": "Organization",
             name: "sigzagphoto",
             url: siteUrl,
-            logo: new URL('/favicon.ico', siteUrl).toString(),
+            logo: new URL('/favicon.svg', siteUrl).toString(),
           }) }}
         />
         {children}

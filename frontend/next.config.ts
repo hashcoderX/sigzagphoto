@@ -22,13 +22,24 @@ const nextConfig: NextConfig = {
       {
         protocol: "http",
         hostname: "127.0.0.1",
-        port: "8000",
+        port: "8005",
         pathname: "/storage/**",
       },
       {
         protocol: "http",
         hostname: "localhost",
-        port: "8000",
+        port: "8005",
+        pathname: "/storage/**",
+      },
+      {
+        protocol: "http",
+        hostname: "sigzagphoto.com",
+        port: "8005",
+        pathname: "/storage/**",
+      },
+      {
+        protocol: "https",
+        hostname: "sigzagphoto.com",
         pathname: "/storage/**",
       },
     ],

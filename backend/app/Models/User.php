@@ -39,6 +39,7 @@ class User extends Authenticatable
         'cover_path',
         'active',
         'premium_package',
+        'email_verified_at',
     ];
 
     /**

@@ -250,7 +250,7 @@ class AuthController extends Controller
         ]);
 
         $idToken = $validated['id_token'];
-        $expectedAud = env('GOOGLE_CLIENT_ID');
+        $expectedAud = config('services.google.client_id');
         if (!$expectedAud) {
             return response()->json(['status' => 'error', 'message' => 'Google OAuth not configured'], 500);
         }
@@ -279,6 +279,7 @@ class AuthController extends Controller
             $user = User::where('email', $email)->first();
             if (!$user) {
                 $role = $validated['role'] ?? 'buyer';
+                $now = Carbon::now();
                 $user = User::create([
                     'name' => $name,
                     'email' => $email,
@@ -286,7 +287,16 @@ class AuthController extends Controller
                     'password' => bin2hex(random_bytes(16)),
                     'role' => $role,
                     'email_verified_at' => now(),
+                    // Keep OAuth signups aligned with regular register flow
+                    'trial_started_at' => $now,
+                    'trial_ends_at' => $now->copy()->addDays(30),
                 ]);
+            }
+            if (!$user->trial_started_at || !$user->trial_ends_at) {
+                $now = Carbon::now();
+                $user->trial_started_at = $now;
+                $user->trial_ends_at = $now->copy()->addDays(30);
+                $user->save();
             }
 
             $token = $user->createToken('api')->plainTextToken;
@@ -298,6 +308,8 @@ class AuthController extends Controller
                     'name' => $user->name,
                     'email' => $user->email,
                     'role' => $user->role,
+                    'trial_started_at' => optional($user->trial_started_at)?->toIso8601String(),
+                    'trial_ends_at' => optional($user->trial_ends_at)?->toIso8601String(),
                     'premium_package' => (bool) $user->premium_package,
                 ],
             ]);
@@ -318,8 +330,8 @@ class AuthController extends Controller
         ]);
 
         $accessToken = $validated['access_token'];
-        $appId = env('FACEBOOK_APP_ID');
-        $appSecret = env('FACEBOOK_APP_SECRET');
+        $appId = config('services.facebook.app_id');
+        $appSecret = config('services.facebook.app_secret');
         if (!$appId || !$appSecret) {
             return response()->json(['status' => 'error', 'message' => 'Facebook OAuth not configured'], 500);
         }
@@ -362,13 +374,23 @@ class AuthController extends Controller
             $user = User::where('email', $email)->first();
             if (!$user) {
                 $role = $validated['role'] ?? 'buyer';
+                $now = Carbon::now();
                 $user = User::create([
                     'name' => $name,
                     'email' => $email,
                     'password' => bin2hex(random_bytes(16)),
                     'role' => $role,
                     'email_verified_at' => now(),
+                    // Keep OAuth signups aligned with regular register flow
+                    'trial_started_at' => $now,
+                    'trial_ends_at' => $now->copy()->addDays(30),
                 ]);
+            }
+            if (!$user->trial_started_at || !$user->trial_ends_at) {
+                $now = Carbon::now();
+                $user->trial_started_at = $now;
+                $user->trial_ends_at = $now->copy()->addDays(30);
+                $user->save();
             }
 
             $token = $user->createToken('api')->plainTextToken;
@@ -380,6 +402,8 @@ class AuthController extends Controller
                     'name' => $user->name,
                     'email' => $user->email,
                     'role' => $user->role,
+                    'trial_started_at' => optional($user->trial_started_at)?->toIso8601String(),
+                    'trial_ends_at' => optional($user->trial_ends_at)?->toIso8601String(),
                     'premium_package' => (bool) $user->premium_package,
                 ],
             ]);
